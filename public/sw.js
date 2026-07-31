@@ -1,4 +1,4 @@
-const CACHE = "ebd-fiel-podcast-v1";
+const CACHE = "ebd-fiel-podcast-v3-logo";
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
