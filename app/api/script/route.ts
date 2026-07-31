@@ -32,8 +32,8 @@ export async function POST(request: Request) {
       if (text.trim().length < 40) return Response.json({ error: "Forneça um conteúdo maior." }, { status: 400 });
       parts.push({ text: `CONTEÚDO-FONTE:\n${text}` });
     }
-    const maximumWords: Record<number, number> = { 5: 520, 10: 1050, 15: 1570, 20: 2100 };
-    const targetWords: Record<number, number> = { 5: 460, 10: 930, 15: 1400, 20: 1870 };
+    const maximumWords: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 3150 };
+    const targetWords: Record<number, number> = { 5: 760, 10: 1480, 15: 2200, 20: 2920 };
     const maxWords = maximumWords[duration];
     parts.push({ text: `Crie um roteiro ORIGINAL de podcast cristão em português brasileiro, com aproximadamente ${targetWords[duration]} palavras e NUNCA mais de ${maxWords} palavras, planejado para uma narração contínua que NÃO ultrapasse ${duration} minutos. Use linguagem clara, bíblica, pastoral, acolhedora e envolvente, destinada à classe ${className} da Escola Bíblica Dominical.
 
@@ -94,7 +94,7 @@ Responda SOMENTE em JSON válido neste formato:
     }
     const finalWordCount = countWords(parsed.script);
     if (finalWordCount > maxWords) return Response.json({ error: `O roteiro ultrapassou ${maxWords} palavras. Clique novamente para gerar uma versão mais objetiva.` }, { status: 422 });
-    return Response.json({ title: parsed.title || title, description: parsed.description || "", script: parsed.script, wordCount: finalWordCount, estimatedSeconds: Math.ceil(finalWordCount / 105 * 60) });
+    return Response.json({ title: parsed.title || title, description: parsed.description || "", script: parsed.script, wordCount: finalWordCount, estimatedSeconds: Math.ceil(finalWordCount / 160 * 60) });
   } catch (e) {
     return Response.json({ error: e instanceof Error && e.message.includes("fetch") ? "Não foi possível acessar a fonte informada." : "Não foi possível criar o roteiro nesta tentativa." }, { status: 500 });
   }

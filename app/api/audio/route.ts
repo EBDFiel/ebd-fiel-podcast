@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     if (!script || script.length < 80 || script.length > 32000) return Response.json({ error: "O roteiro deve ter entre 80 e 32.000 caracteres." }, { status: 400 });
 
     const selectedDuration = [5, 10, 15, 20].includes(Number(targetDuration)) ? Number(targetDuration) : 10;
-    const maximumWords: Record<number, number> = { 5: 520, 10: 1050, 15: 1570, 20: 2100 };
+    const maximumWords: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 3150 };
     const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
     if (wordCount > maximumWords[selectedDuration]) return Response.json({ error: `O roteiro tem ${wordCount} palavras. O máximo para ${selectedDuration} minutos é ${maximumWords[selectedDuration]}.` }, { status: 422 });
 
@@ -107,14 +107,16 @@ export async function POST(request: Request) {
 
     const pcmParts: Uint8Array[] = [];
     for (let index = 0; index < chunks.length; index++) {
+      if (index > 0 && index % 9 === 0) await new Promise(resolve => setTimeout(resolve, 62000));
       const prompt = `Este é o bloco ${index + 1} de ${chunks.length} de um único podcast cristão em português brasileiro. Preserve rigorosamente o mesmo timbre, ritmo e principalmente o MESMO VOLUME do início ao fim, sem reduzir a intensidade nas falas longas. Débora interpreta de forma ${deboraStyle.toLowerCase()}, participa, pergunta e comenta. Professor Fiel interpreta de forma ${professorStyle.toLowerCase()}, com projeção clara, constante, segura e plenamente audível. Use narração contínua, transições suaves, pausas naturais e respeito ao conteúdo bíblico. Leia somente o diálogo abaixo, sem anunciar os nomes dos participantes e sem acrescentar nenhuma fala:\n\n${chunks[index]}`;
       let response: Response | null = null;
       let data: any = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < 3; attempt++) {
         response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [{ speaker: "Débora", voiceConfig: { prebuiltVoiceConfig: { voiceName: deboraVoice } } }, { speaker: "Professor Fiel", voiceConfig: { prebuiltVoiceConfig: { voiceName: professorVoice } } }] } } } }) });
         data = await response.json();
         if (response.ok) break;
-        if (attempt === 0 && (response.status === 429 || response.status >= 500)) await new Promise(resolve => setTimeout(resolve, 1000));
+        if (response.status === 429 && attempt < 2) { const message = String(data?.error?.message || ""); const seconds = Number(message.match(/retry in ([0-9.]+)s/i)?.[1] || 60); await new Promise(resolve => setTimeout(resolve, Math.min(70000, Math.max(58000, (seconds + 3) * 1000)))); continue; }
+        if (response.status >= 500 && attempt < 2) await new Promise(resolve => setTimeout(resolve, 1800));
       }
       if (!response?.ok) return Response.json({ error: data?.error?.message || `A API Gemini recusou o bloco ${index + 1} do áudio.` }, { status: response?.status || 502 });
       const part = data?.candidates?.[0]?.content?.parts?.find((item: any) => item.inlineData?.data);

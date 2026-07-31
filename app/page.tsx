@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const CLASSES = ["Adultos", "Jovens", "Adolescentes", "Pré-adolescentes"];
 const DURATIONS = [5, 10, 15, 20];
-const MAX_WORDS: Record<number, number> = { 5: 520, 10: 1050, 15: 1570, 20: 2100 };
+const MAX_WORDS: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 3150 };
 const VOICES = [
   ["Zephyr", "brilhante"], ["Puck", "animada"], ["Charon", "informativa"], ["Kore", "firme"], ["Fenrir", "empolgante"], ["Leda", "jovem"], ["Orus", "firme"], ["Aoede", "leve"], ["Callirrhoe", "tranquila"], ["Autonoe", "brilhante"], ["Enceladus", "suave"], ["Iapetus", "clara"], ["Umbriel", "descontraída"], ["Algieba", "macia"], ["Despina", "macia"], ["Erinome", "clara"], ["Algenib", "grave"], ["Rasalgethi", "informativa"], ["Laomedeia", "animada"], ["Achernar", "suave"], ["Alnilam", "firme"], ["Schedar", "equilibrada"], ["Gacrux", "madura"], ["Pulcherrima", "direta"], ["Achird", "amigável"], ["Zubenelgenubi", "casual"], ["Vindemiatrix", "gentil"], ["Sadachbia", "viva"], ["Sadaltager", "didática"], ["Sulafat", "acolhedora"],
 ].map(([id, quality]) => ({ id, label: `${id} — ${quality}` }));
@@ -55,6 +55,7 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const previewCache = useRef<Record<string, string>>({});
 
   useEffect(() => {
     try { setHistory(JSON.parse(localStorage.getItem("ebd-podcast-history") || "[]")); } catch { setHistory([]); }
@@ -112,9 +113,10 @@ export default function Home() {
   async function previewVoice(role: "Débora" | "Professor Fiel") {
     const presenter = role === "Débora"; setPreviewLoading(role); setError("");
     try {
-      const response = await fetch("/api/voice-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, voice: presenter ? presenterVoice : commentatorVoice, style: presenter ? presenterStyle : commentatorStyle }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível ouvir a voz.");
-      const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })); const sample = new Audio(url); sample.onended = () => URL.revokeObjectURL(url); await sample.play();
+      const voice = presenter ? presenterVoice : commentatorVoice; const style = presenter ? presenterStyle : commentatorStyle; const cacheKey = `${role}|${voice}|${style}`;
+      let encoded = previewCache.current[cacheKey];
+      if (!encoded) { const response = await fetch("/api/voice-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, voice, style }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível ouvir a voz."); encoded = data.audio; previewCache.current[cacheKey] = encoded; }
+      const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })); const sample = new Audio(url); sample.onended = () => URL.revokeObjectURL(url); await sample.play();
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ouvir a voz."); } finally { setPreviewLoading(""); }
   }
 
@@ -165,7 +167,7 @@ export default function Home() {
           <div className="voiceCard"><strong>Professor Fiel</strong><small>Explica, ensina e aplica</small><label><span>Voz</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={commentatorStyle} onChange={e => setCommentatorStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label><button className="previewVoice" onClick={() => previewVoice("Professor Fiel")} disabled={!!previewLoading}>{previewLoading === "Professor Fiel" ? "Preparando..." : "▶ Ouvir amostra"}</button></div>
         </div>
         <textarea className="scriptEditor" value={script} onChange={e => setScript(e.target.value)} aria-label="Roteiro do podcast"/>
-        <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando podcast...</> : <>🎙 Gerar com Débora e Professor Fiel</>}</button></div>
+        <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando em blocos; aguarde...</> : <>🎙 Gerar com Débora e Professor Fiel</>}</button></div>
       </section>}
 
       {audioUrl && <section className="panel resultPanel" id="resultado">
