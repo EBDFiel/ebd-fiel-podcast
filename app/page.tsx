@@ -5,24 +5,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const CLASSES = ["Adultos", "Jovens", "Adolescentes", "Pré-adolescentes"];
 const DURATIONS = [5, 10, 15, 20];
 const MAX_WORDS: Record<number, number> = { 5: 520, 10: 1050, 15: 1570, 20: 2100 };
-const FEMALE_VOICES = [
-  { id: "Kore", label: "Kore — clara e envolvente" },
-  { id: "Aoede", label: "Aoede — leve e natural" },
-  { id: "Leda", label: "Leda — jovem e acolhedora" },
-  { id: "Zephyr", label: "Zephyr — calma e suave" },
-];
-const MALE_VOICES = [
-  { id: "Puck", label: "Puck — dinâmica e comunicativa" },
-  { id: "Charon", label: "Charon — firme e profunda" },
-  { id: "Fenrir", label: "Fenrir — madura e segura" },
-  { id: "Orus", label: "Orus — didática e equilibrada" },
-];
+const VOICES = [
+  ["Zephyr", "brilhante"], ["Puck", "animada"], ["Charon", "informativa"], ["Kore", "firme"], ["Fenrir", "empolgante"], ["Leda", "jovem"], ["Orus", "firme"], ["Aoede", "leve"], ["Callirrhoe", "tranquila"], ["Autonoe", "brilhante"], ["Enceladus", "suave"], ["Iapetus", "clara"], ["Umbriel", "descontraída"], ["Algieba", "macia"], ["Despina", "macia"], ["Erinome", "clara"], ["Algenib", "grave"], ["Rasalgethi", "informativa"], ["Laomedeia", "animada"], ["Achernar", "suave"], ["Alnilam", "firme"], ["Schedar", "equilibrada"], ["Gacrux", "madura"], ["Pulcherrima", "direta"], ["Achird", "amigável"], ["Zubenelgenubi", "casual"], ["Vindemiatrix", "gentil"], ["Sadachbia", "viva"], ["Sadaltager", "didática"], ["Sulafat", "acolhedora"],
+].map(([id, quality]) => ({ id, label: `${id} — ${quality}` }));
+const VOICE_STYLES = ["Viva e envolvente", "Acolhedora", "Didática e pastoral", "Entusiasmada", "Serena", "Firme e pastoral"];
 const EXAMPLE = "A lição desta semana destaca a importância de ouvir a Palavra de Deus, compreender seus ensinamentos e aplicá-los de maneira prática. A fé cristã não se limita ao conhecimento, mas produz transformação, comunhão e serviço.";
 
 type HistoryItem = { title: string; date: string; duration: number };
 
 function fmt(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+}
+
+function audioBufferToWav(buffer: AudioBuffer) {
+  const samples = buffer.getChannelData(0); const bytes = new ArrayBuffer(44 + samples.length * 2); const view = new DataView(bytes);
+  const write = (offset: number, value: string) => [...value].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  write(0, "RIFF"); view.setUint32(4, 36 + samples.length * 2, true); write(8, "WAVE"); write(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, buffer.sampleRate, true); view.setUint32(28, buffer.sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, "data"); view.setUint32(40, samples.length * 2, true);
+  samples.forEach((sample, index) => view.setInt16(44 + index * 2, Math.max(-1, Math.min(1, sample)) * 0x7fff, true)); return new Blob([bytes], { type: "audio/wav" });
 }
 
 export default function Home() {
@@ -35,8 +34,16 @@ export default function Home() {
   const [publisher, setPublisher] = useState("Editora Betel");
   const [lessonClass, setLessonClass] = useState("Adultos");
   const [targetDuration, setTargetDuration] = useState(10);
-  const [presenterVoice, setPresenterVoice] = useState("Kore");
-  const [commentatorVoice, setCommentatorVoice] = useState("Charon");
+  const [presenterVoice, setPresenterVoice] = useState("Sadachbia");
+  const [commentatorVoice, setCommentatorVoice] = useState("Sadaltager");
+  const [presenterStyle, setPresenterStyle] = useState("Viva e envolvente");
+  const [commentatorStyle, setCommentatorStyle] = useState("Didática e pastoral");
+  const [previewLoading, setPreviewLoading] = useState("");
+  const [musicMode, setMusicMode] = useState<"none" | "music">("none");
+  const [musicFile, setMusicFile] = useState<File | null>(null);
+  const [musicVolume, setMusicVolume] = useState(8);
+  const [mixedAudioUrl, setMixedAudioUrl] = useState("");
+  const [mixing, setMixing] = useState(false);
   const [script, setScript] = useState("");
   const [description, setDescription] = useState("");
   const [step, setStep] = useState(1);
@@ -54,6 +61,7 @@ export default function Home() {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
+  useEffect(() => () => { if (mixedAudioUrl) URL.revokeObjectURL(mixedAudioUrl); }, [mixedAudioUrl]);
 
   const words = useMemo(() => script.trim() ? script.trim().split(/\s+/).length : 0, [script]);
 
@@ -82,7 +90,7 @@ export default function Home() {
     setLoading("audio"); setError("");
     try {
       if (words > MAX_WORDS[targetDuration]) return setError(`O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
-      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, targetDuration }) });
+      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
       const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
@@ -99,6 +107,28 @@ export default function Home() {
 
   function copyShareText() {
     navigator.clipboard.writeText(`🎙️ *EBD Fiel Podcast*\n\n*${lessonTitle}*\n${description}\n\nOuça e compartilhe com sua classe.`);
+  }
+
+  async function previewVoice(role: "Débora" | "Professor Fiel") {
+    const presenter = role === "Débora"; setPreviewLoading(role); setError("");
+    try {
+      const response = await fetch("/api/voice-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, voice: presenter ? presenterVoice : commentatorVoice, style: presenter ? presenterStyle : commentatorStyle }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível ouvir a voz.");
+      const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })); const sample = new Audio(url); sample.onended = () => URL.revokeObjectURL(url); await sample.play();
+    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ouvir a voz."); } finally { setPreviewLoading(""); }
+  }
+
+  async function mixWithMusic() {
+    if (!audioUrl || !musicFile) return setError("Escolha primeiro uma música MP3 ou WAV.");
+    if (musicFile.size > 25 * 1024 * 1024) return setError("A música deve ter no máximo 25 MB.");
+    setMixing(true); setError("");
+    try {
+      const context = new AudioContext(); const [voice, music] = await Promise.all([context.decodeAudioData(await (await fetch(audioUrl)).arrayBuffer()), context.decodeAudioData(await musicFile.arrayBuffer())]); await context.close();
+      const offline = new OfflineAudioContext(1, Math.ceil(voice.duration * 24000), 24000); const voiceSource = offline.createBufferSource(); voiceSource.buffer = voice; const voiceGain = offline.createGain(); voiceGain.gain.value = 1; voiceSource.connect(voiceGain);
+      const musicSource = offline.createBufferSource(); musicSource.buffer = music; musicSource.loop = true; const musicGain = offline.createGain(); const level = musicVolume / 100; musicGain.gain.setValueAtTime(0, 0); musicGain.gain.linearRampToValueAtTime(level, Math.min(2, voice.duration / 4)); musicGain.gain.setValueAtTime(level, Math.max(2, voice.duration - 2)); musicGain.gain.linearRampToValueAtTime(0, voice.duration); musicSource.connect(musicGain);
+      const compressor = offline.createDynamicsCompressor(); compressor.threshold.value = -16; compressor.ratio.value = 4; voiceGain.connect(compressor); musicGain.connect(compressor); compressor.connect(offline.destination); voiceSource.start(); musicSource.start();
+      const rendered = await offline.startRendering(); if (mixedAudioUrl) URL.revokeObjectURL(mixedAudioUrl); setMixedAudioUrl(URL.createObjectURL(audioBufferToWav(rendered)));
+    } catch { setError("Não foi possível misturar essa música. Tente um arquivo MP3 ou WAV diferente."); } finally { setMixing(false); }
   }
 
   return <main>
@@ -131,8 +161,8 @@ export default function Home() {
         <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className={`scriptStats ${words > MAX_WORDS[targetDuration] ? "overLimit" : ""}`}><b>{words}</b> / {MAX_WORDS[targetDuration]} palavras <i/> máximo de {targetDuration} min</div></div>
         <div className="speakers"><span><i className="host">D</i><b>Débora</b> apresenta e conduz</span><span><i className="guest">F</i><b>Professor Fiel</b> comenta e ensina</span></div>
         <div className="voiceGrid">
-          <label><span>Voz de Débora</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{FEMALE_VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label>
-          <label><span>Voz do Professor Fiel</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{MALE_VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label>
+          <div className="voiceCard"><strong>Débora</strong><small>Apresenta, pergunta e comenta</small><label><span>Voz</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={presenterStyle} onChange={e => setPresenterStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label><button className="previewVoice" onClick={() => previewVoice("Débora")} disabled={!!previewLoading}>{previewLoading === "Débora" ? "Preparando..." : "▶ Ouvir amostra"}</button></div>
+          <div className="voiceCard"><strong>Professor Fiel</strong><small>Explica, ensina e aplica</small><label><span>Voz</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={commentatorStyle} onChange={e => setCommentatorStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label><button className="previewVoice" onClick={() => previewVoice("Professor Fiel")} disabled={!!previewLoading}>{previewLoading === "Professor Fiel" ? "Preparando..." : "▶ Ouvir amostra"}</button></div>
         </div>
         <textarea className="scriptEditor" value={script} onChange={e => setScript(e.target.value)} aria-label="Roteiro do podcast"/>
         <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando podcast...</> : <>🎙 Gerar com Débora e Professor Fiel</>}</button></div>
@@ -141,7 +171,7 @@ export default function Home() {
       {audioUrl && <section className="panel resultPanel" id="resultado">
         <audio ref={audioRef} src={audioUrl} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={e => setCurrent(e.currentTarget.currentTime)} onLoadedMetadata={e => setDuration(e.currentTarget.duration)} onEnded={() => setPlaying(false)}/>
         <div className="cover"><div className="miniMic">🎙</div><span>EBD FIEL PODCAST</span><h3>{lessonTitle}</h3><small>{lessonClass} • Lição da semana</small></div>
-        <div className="resultContent"><div className="success">✓ Podcast gerado com sucesso</div><h2>{lessonTitle}</h2><p>{description}</p><div className="player"><button onClick={() => audioRef.current?.paused ? audioRef.current.play() : audioRef.current?.pause()}>{playing ? "Ⅱ" : "▶"}</button><div><input type="range" min="0" max={duration || 0} value={current} onChange={e => { if(audioRef.current) audioRef.current.currentTime = Number(e.target.value); }}/><span>{fmt(current)} <i/> {fmt(duration)}</span></div></div><div className="downloadRow"><a href={audioUrl} download={`ebd-fiel-podcast-${Date.now()}.wav`}>↓ Baixar podcast</a><button onClick={copyShareText}>▣ Copiar texto para WhatsApp</button></div></div>
+        <div className="resultContent"><div className="success">✓ Podcast gerado com sucesso</div><h2>{lessonTitle}</h2><p>{description}</p><div className="player"><button onClick={() => audioRef.current?.paused ? audioRef.current.play() : audioRef.current?.pause()}>{playing ? "Ⅱ" : "▶"}</button><div><input type="range" min="0" max={duration || 0} value={current} onChange={e => { if(audioRef.current) audioRef.current.currentTime = Number(e.target.value); }}/><span>{fmt(current)} <i/> {fmt(duration)}</span></div></div><div className="musicStudio"><strong>Música de fundo (opcional)</strong><div className="musicModes"><button className={musicMode === "none" ? "active" : ""} onClick={() => setMusicMode("none")}>Sem música</button><button className={musicMode === "music" ? "active" : ""} onClick={() => setMusicMode("music")}>Com música</button></div>{musicMode === "music" && <div className="musicControls"><label><input type="file" accept="audio/mpeg,audio/wav" onChange={e => { setMusicFile(e.target.files?.[0] || null); setMixedAudioUrl(""); }}/><span>{musicFile?.name || "Escolher MP3 ou WAV"}</span></label><div><span>Volume da música: {musicVolume}%</span><input type="range" min="2" max="20" value={musicVolume} onChange={e => setMusicVolume(Number(e.target.value))}/></div><button onClick={mixWithMusic} disabled={mixing || !musicFile}>{mixing ? "Misturando..." : "♫ Criar versão com música"}</button></div>}</div><div className="downloadRow"><a href={mixedAudioUrl || audioUrl} download={`ebd-fiel-podcast-${Date.now()}.wav`}>↓ Baixar {mixedAudioUrl ? "com música" : "podcast"}</a><button onClick={copyShareText}>▣ Copiar texto para WhatsApp</button></div></div>
       </section>}
 
       {history.length > 0 && <section className="history"><h2>Histórico neste dispositivo</h2><div>{history.map((item, i) => <article key={i}><span>🎧</span><div><b>{item.title}</b><small>{item.date} • {item.duration} minutos</small></div></article>)}</div></section>}

@@ -32,7 +32,7 @@ function splitLongDialogueLine(line: string, maxChars: number) {
   return pieces;
 }
 
-function makeChunks(script: string, maxChars = 2800) {
+function makeChunks(script: string, maxChars = 1600) {
   const clean = script.replace(/^\s*\[(INTRODUÇÃO|DESENVOLVIMENTO|CONCLUSÃO)\]\s*$/gim, "").trim();
   const lines = clean.split(/\n+/).map(line => line.trim()).filter(Boolean).flatMap(line => splitLongDialogueLine(line, maxChars));
   const chunks: string[] = [];
@@ -60,24 +60,14 @@ function trimAndNormalizePcm(input: Uint8Array) {
   first = Math.max(0, first - padding);
   last = Math.min(samples - 1, last + padding);
 
-  let sumSquares = 0;
-  let activeSamples = 0;
-  let peak = 1;
-  for (let index = first; index <= last; index++) {
-    const value = view.getInt16(index * 2, true);
-    const absolute = Math.abs(value);
-    peak = Math.max(peak, absolute);
-    if (absolute > 220) { sumSquares += value * value; activeSamples++; }
-  }
-  const rms = activeSamples ? Math.sqrt(sumSquares / activeSamples) : 1;
-  let gain = Math.min(2.1, Math.max(0.75, 4300 / rms));
-  gain = Math.min(gain, 30000 / peak);
-
   const output = new Uint8Array((last - first + 1) * 2);
   const outputView = new DataView(output.buffer);
-  for (let source = first, destination = 0; source <= last; source++, destination++) {
-    const adjusted = Math.max(-32768, Math.min(32767, Math.round(view.getInt16(source * 2, true) * gain)));
-    outputView.setInt16(destination * 2, adjusted, true);
+  const window = SAMPLE_RATE; let previousGain = 1;
+  for (let start = first; start <= last; start += window) {
+    const end = Math.min(last, start + window - 1); let sum = 0; let active = 0; let peak = 1;
+    for (let index = start; index <= end; index++) { const value = view.getInt16(index * 2, true); const absolute = Math.abs(value); peak = Math.max(peak, absolute); if (absolute > 220) { sum += value * value; active++; } }
+    const rms = active ? Math.sqrt(sum / active) : 4300; let desired = Math.min(2.4, Math.max(0.72, 4300 / rms)); desired = Math.min(desired, 30000 / peak); const gain = previousGain * .55 + desired * .45; previousGain = gain;
+    for (let source = start; source <= end; source++) { const destination = source - first; const adjusted = Math.max(-32768, Math.min(32767, Math.round(view.getInt16(source * 2, true) * gain))); outputView.setInt16(destination * 2, adjusted, true); }
   }
   return output;
 }
@@ -98,7 +88,7 @@ export async function POST(request: Request) {
   try {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return Response.json({ error: "A chave Gemini ainda não foi configurada." }, { status: 503 });
-    const { script, presenterVoice, commentatorVoice, targetDuration } = await request.json() as { script?: string; presenterVoice?: string; commentatorVoice?: string; targetDuration?: number };
+    const { script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration } = await request.json() as { script?: string; presenterVoice?: string; commentatorVoice?: string; presenterStyle?: string; commentatorStyle?: string; targetDuration?: number };
     if (!script || script.length < 80 || script.length > 32000) return Response.json({ error: "O roteiro deve ter entre 80 e 32.000 caracteres." }, { status: 400 });
 
     const selectedDuration = [5, 10, 15, 20].includes(Number(targetDuration)) ? Number(targetDuration) : 10;
@@ -106,16 +96,18 @@ export async function POST(request: Request) {
     const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
     if (wordCount > maximumWords[selectedDuration]) return Response.json({ error: `O roteiro tem ${wordCount} palavras. O máximo para ${selectedDuration} minutos é ${maximumWords[selectedDuration]}.` }, { status: 422 });
 
-    const femaleVoices = ["Kore", "Aoede", "Leda", "Zephyr"];
-    const maleVoices = ["Puck", "Charon", "Fenrir", "Orus"];
-    const deboraVoice = femaleVoices.includes(presenterVoice || "") ? presenterVoice! : "Kore";
-    const professorVoice = maleVoices.includes(commentatorVoice || "") ? commentatorVoice! : "Charon";
+    const voices = ["Zephyr","Puck","Charon","Kore","Fenrir","Leda","Orus","Aoede","Callirrhoe","Autonoe","Enceladus","Iapetus","Umbriel","Algieba","Despina","Erinome","Algenib","Rasalgethi","Laomedeia","Achernar","Alnilam","Schedar","Gacrux","Pulcherrima","Achird","Zubenelgenubi","Vindemiatrix","Sadachbia","Sadaltager","Sulafat"];
+    const styles = ["Viva e envolvente", "Acolhedora", "Didática e pastoral", "Entusiasmada", "Serena", "Firme e pastoral"];
+    const deboraVoice = voices.includes(presenterVoice || "") ? presenterVoice! : "Sadachbia";
+    const professorVoice = voices.includes(commentatorVoice || "") ? commentatorVoice! : "Sadaltager";
+    const deboraStyle = styles.includes(presenterStyle || "") ? presenterStyle! : "Viva e envolvente";
+    const professorStyle = styles.includes(commentatorStyle || "") ? commentatorStyle! : "Didática e pastoral";
     const chunks = makeChunks(script);
     if (!chunks.length) return Response.json({ error: "Não foi possível separar o roteiro para a narração." }, { status: 400 });
 
     const pcmParts: Uint8Array[] = [];
     for (let index = 0; index < chunks.length; index++) {
-      const prompt = `Este é o bloco ${index + 1} de ${chunks.length} de um único podcast cristão em português brasileiro. Mantenha o mesmo timbre, volume, ritmo e interpretação em todos os blocos. Débora é a apresentadora, com voz feminina calorosa, clara e acolhedora. Professor Fiel é um professor cristão, com voz masculina serena, segura e didática. Use narração contínua, transições suaves, pausas naturais e respeito ao conteúdo bíblico. Leia somente o diálogo abaixo, sem anunciar os nomes dos participantes e sem acrescentar nenhuma fala:\n\n${chunks[index]}`;
+      const prompt = `Este é o bloco ${index + 1} de ${chunks.length} de um único podcast cristão em português brasileiro. Preserve rigorosamente o mesmo timbre, ritmo e principalmente o MESMO VOLUME do início ao fim, sem reduzir a intensidade nas falas longas. Débora interpreta de forma ${deboraStyle.toLowerCase()}, participa, pergunta e comenta. Professor Fiel interpreta de forma ${professorStyle.toLowerCase()}, com projeção clara, constante, segura e plenamente audível. Use narração contínua, transições suaves, pausas naturais e respeito ao conteúdo bíblico. Leia somente o diálogo abaixo, sem anunciar os nomes dos participantes e sem acrescentar nenhuma fala:\n\n${chunks[index]}`;
       let response: Response | null = null;
       let data: any = null;
       for (let attempt = 0; attempt < 2; attempt++) {

@@ -47,6 +47,8 @@ Regras obrigatórias:
 - Não copie longos trechos; resuma, explique e aplique com redação própria.
 - A conversa tem exatamente dois participantes identificados como "Débora:" e "Professor Fiel:".
 - Débora é a apresentadora: acolhe, apresenta o assunto, conduz a conversa e faz transições naturais.
+- Débora não apenas pergunta: depois das principais explicações do Professor Fiel, ela comenta brevemente em uma ou duas frases o que compreendeu, sintetizando ou aplicando a ideia antes de seguir.
+- Os comentários de Débora devem ser naturais e úteis, sem repetir toda a explicação nem substituir o ensino do Professor Fiel.
 - Professor Fiel é um professor cristão: explica a Bíblia e a teologia com fidelidade às Escrituras, clareza, equilíbrio e aplicações concretas.
 - Evite repetições, rodeios, saudações duplicadas e comentários que não contribuam para a lição.
 - Organize obrigatoriamente o roteiro com os marcadores editoriais [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO], cada um em uma linha separada. Esses marcadores não serão narrados.
