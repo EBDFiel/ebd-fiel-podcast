@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const CLASSES = ["Adultos", "Jovens", "Adolescentes", "Pré-adolescentes"];
 const DURATIONS = [5, 10, 15, 20];
+const MAX_WORDS: Record<number, number> = { 5: 520, 10: 1050, 15: 1570, 20: 2100 };
 const FEMALE_VOICES = [
   { id: "Kore", label: "Kore — clara e envolvente" },
   { id: "Aoede", label: "Aoede — leve e natural" },
@@ -29,7 +30,9 @@ export default function Home() {
   const [sourceText, setSourceText] = useState(EXAMPLE);
   const [sourceUrl, setSourceUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [lessonTitle, setLessonTitle] = useState("A fé que transforma");
+  const [lessonNumber, setLessonNumber] = useState("5");
+  const [lessonTitle, setLessonTitle] = useState("A disciplina do Senhor conduz à vida");
+  const [publisher, setPublisher] = useState("Editora Betel");
   const [lessonClass, setLessonClass] = useState("Adultos");
   const [targetDuration, setTargetDuration] = useState(10);
   const [presenterVoice, setPresenterVoice] = useState("Kore");
@@ -62,7 +65,8 @@ export default function Home() {
     try {
       const form = new FormData();
       form.set("mode", sourceMode); form.set("text", sourceText); form.set("url", sourceUrl);
-      form.set("title", lessonTitle); form.set("className", lessonClass); form.set("duration", String(targetDuration));
+      form.set("lessonNumber", lessonNumber); form.set("title", lessonTitle); form.set("publisher", publisher);
+      form.set("className", lessonClass); form.set("duration", String(targetDuration));
       if (file) form.set("file", file);
       const response = await fetch("/api/script", { method: "POST", body: form });
       const data = await response.json();
@@ -77,13 +81,15 @@ export default function Home() {
     if (script.trim().length < 80) return setError("Revise o roteiro antes de gerar o áudio.");
     setLoading("audio"); setError("");
     try {
-      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice }) });
+      if (words > MAX_WORDS[targetDuration]) return setError(`O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
+      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, targetDuration }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
       const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: "audio/wav" });
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       const url = URL.createObjectURL(blob); setAudioUrl(url); setStep(3);
+      if (data.durationSeconds) setDuration(Number(data.durationSeconds));
       const item = { title: lessonTitle, date: new Date().toLocaleDateString("pt-BR"), duration: targetDuration };
       const next = [item, ...history].slice(0, 6); setHistory(next); localStorage.setItem("ebd-podcast-history", JSON.stringify(next));
       setTimeout(() => { document.getElementById("resultado")?.scrollIntoView({ behavior: "smooth" }); audioRef.current?.play(); }, 120);
@@ -109,14 +115,20 @@ export default function Home() {
         {sourceMode === "text" && <div className="textBox"><textarea value={sourceText} onChange={e => setSourceText(e.target.value)} maxLength={30000} placeholder="Cole o conteúdo da lição, subsídios ou anotações..."/><small>{sourceText.length.toLocaleString("pt-BR")} / 30.000 caracteres</small></div>}
         {sourceMode === "pdf" && <label className="drop"><input type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)}/><b>↑</b><strong>{file ? file.name : "Selecione o PDF da lição"}</strong><span>Arquivo PDF de até 15 MB</span></label>}
         {sourceMode === "url" && <label className="urlInput"><span>Endereço da página</span><input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="https://exemplo.com/licao-da-semana"/></label>}
-        <div className="settingsGrid"><label><span>Título da lição</span><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Digite o título"/></label><label><span>Classe</span><select value={lessonClass} onChange={e => setLessonClass(e.target.value)}>{CLASSES.map(c => <option key={c}>{c}</option>)}</select></label><div><span>Duração aproximada</span><div className="durationButtons">{DURATIONS.map(d => <button type="button" className={targetDuration === d ? "active" : ""} onClick={() => setTargetDuration(d)} key={d}>{d} min</button>)}</div></div></div>
+        <div className="lessonMetaGrid">
+          <label><span>Número da lição</span><input value={lessonNumber} onChange={e => setLessonNumber(e.target.value)} placeholder="Ex.: 5"/></label>
+          <label><span>Título da lição</span><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Digite o título"/></label>
+          <label><span>Editora</span><input value={publisher} onChange={e => setPublisher(e.target.value)} placeholder="Ex.: Editora Betel"/></label>
+          <label><span>Classe</span><select value={lessonClass} onChange={e => setLessonClass(e.target.value)}>{CLASSES.map(c => <option key={c}>{c}</option>)}</select></label>
+        </div>
+        <div className="durationSection"><span>Duração máxima do podcast</span><div className="durationButtons">{DURATIONS.map(d => <button type="button" className={targetDuration === d ? "active" : ""} onClick={() => setTargetDuration(d)} key={d}>{d} min</button>)}</div><small>O roteiro será objetivo e planejado para não ultrapassar o tempo escolhido.</small></div>
         <div className="actionRow"><p>O roteiro será um resumo conversacional original, não uma cópia do material.</p><button className="primary" onClick={createScript} disabled={!!loading}>{loading === "script" ? <><i className="spin"/> Criando roteiro...</> : <>✦ Criar roteiro com IA</>}</button></div>
       </section>
 
       {error && <div className="error" role="alert"><b>!</b><span>{error}</span></div>}
 
       {script && <section className="panel scriptPanel" id="roteiro">
-        <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className="scriptStats"><b>{words}</b> palavras <i/> cerca de {targetDuration} min</div></div>
+        <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className={`scriptStats ${words > MAX_WORDS[targetDuration] ? "overLimit" : ""}`}><b>{words}</b> / {MAX_WORDS[targetDuration]} palavras <i/> máximo de {targetDuration} min</div></div>
         <div className="speakers"><span><i className="host">D</i><b>Débora</b> apresenta e conduz</span><span><i className="guest">F</i><b>Professor Fiel</b> comenta e ensina</span></div>
         <div className="voiceGrid">
           <label><span>Voz de Débora</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{FEMALE_VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label>

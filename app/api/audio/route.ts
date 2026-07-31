@@ -1,25 +1,146 @@
-function pcmToWav(pcm: Uint8Array, rate = 24000) {
-  const buffer = new ArrayBuffer(44 + pcm.length); const view = new DataView(buffer);
-  const write = (o: number, s: string) => [...s].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)));
-  write(0,"RIFF"); view.setUint32(4,36+pcm.length,true); write(8,"WAVE"); write(12,"fmt "); view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true); view.setUint32(24,rate,true); view.setUint32(28,rate*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true); write(36,"data"); view.setUint32(40,pcm.length,true); new Uint8Array(buffer,44).set(pcm); return new Uint8Array(buffer);
+const SAMPLE_RATE = 24000;
+const BYTES_PER_SAMPLE = 2;
+
+function pcmToWav(pcm: Uint8Array, rate = SAMPLE_RATE) {
+  const buffer = new ArrayBuffer(44 + pcm.length);
+  const view = new DataView(buffer);
+  const write = (offset: number, value: string) => [...value].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  write(0, "RIFF"); view.setUint32(4, 36 + pcm.length, true); write(8, "WAVE"); write(12, "fmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * BYTES_PER_SAMPLE, true);
+  view.setUint16(32, BYTES_PER_SAMPLE, true); view.setUint16(34, 16, true);
+  write(36, "data"); view.setUint32(40, pcm.length, true);
+  new Uint8Array(buffer, 44).set(pcm);
+  return new Uint8Array(buffer);
 }
+
+function splitLongDialogueLine(line: string, maxChars: number) {
+  if (line.length <= maxChars) return [line];
+  const match = line.match(/^(Débora|Professor Fiel):\s*/i);
+  const speaker = match?.[1] || "Professor Fiel";
+  const content = line.slice(match?.[0].length || 0);
+  const sentences = content.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [content];
+  const pieces: string[] = [];
+  let current = `${speaker}:`;
+  for (const sentence of sentences) {
+    if (`${current} ${sentence}`.length > maxChars && current.length > speaker.length + 1) {
+      pieces.push(current.trim());
+      current = `${speaker}: ${sentence.trim()}`;
+    } else current += ` ${sentence.trim()}`;
+  }
+  if (current.trim().length > speaker.length + 1) pieces.push(current.trim());
+  return pieces;
+}
+
+function makeChunks(script: string, maxChars = 2800) {
+  const clean = script.replace(/^\s*\[(INTRODUÇÃO|DESENVOLVIMENTO|CONCLUSÃO)\]\s*$/gim, "").trim();
+  const lines = clean.split(/\n+/).map(line => line.trim()).filter(Boolean).flatMap(line => splitLongDialogueLine(line, maxChars));
+  const chunks: string[] = [];
+  let current = "";
+  for (const line of lines) {
+    if (current && `${current}\n\n${line}`.length > maxChars) {
+      chunks.push(current);
+      current = line;
+    } else current += `${current ? "\n\n" : ""}${line}`;
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function trimAndNormalizePcm(input: Uint8Array) {
+  const evenLength = input.length - (input.length % 2);
+  const view = new DataView(input.buffer, input.byteOffset, evenLength);
+  const samples = evenLength / 2;
+  const threshold = 160;
+  let first = 0;
+  let last = samples - 1;
+  while (first < samples && Math.abs(view.getInt16(first * 2, true)) < threshold) first++;
+  while (last > first && Math.abs(view.getInt16(last * 2, true)) < threshold) last--;
+  const padding = Math.floor(SAMPLE_RATE * 0.12);
+  first = Math.max(0, first - padding);
+  last = Math.min(samples - 1, last + padding);
+
+  let sumSquares = 0;
+  let activeSamples = 0;
+  let peak = 1;
+  for (let index = first; index <= last; index++) {
+    const value = view.getInt16(index * 2, true);
+    const absolute = Math.abs(value);
+    peak = Math.max(peak, absolute);
+    if (absolute > 220) { sumSquares += value * value; activeSamples++; }
+  }
+  const rms = activeSamples ? Math.sqrt(sumSquares / activeSamples) : 1;
+  let gain = Math.min(2.1, Math.max(0.75, 4300 / rms));
+  gain = Math.min(gain, 30000 / peak);
+
+  const output = new Uint8Array((last - first + 1) * 2);
+  const outputView = new DataView(output.buffer);
+  for (let source = first, destination = 0; source <= last; source++, destination++) {
+    const adjusted = Math.max(-32768, Math.min(32767, Math.round(view.getInt16(source * 2, true) * gain)));
+    outputView.setInt16(destination * 2, adjusted, true);
+  }
+  return output;
+}
+
+function concatenatePcm(parts: Uint8Array[]) {
+  const silence = new Uint8Array(Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * 0.18));
+  const total = parts.reduce((sum, part) => sum + part.length, 0) + Math.max(0, parts.length - 1) * silence.length;
+  const output = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part, index) => {
+    output.set(part, offset); offset += part.length;
+    if (index < parts.length - 1) { output.set(silence, offset); offset += silence.length; }
+  });
+  return output;
+}
+
 export async function POST(request: Request) {
   try {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return Response.json({ error: "A chave Gemini ainda não foi configurada." }, { status: 503 });
-    const { script, presenterVoice, commentatorVoice } = await request.json() as { script?: string; presenterVoice?: string; commentatorVoice?: string };
+    const { script, presenterVoice, commentatorVoice, targetDuration } = await request.json() as { script?: string; presenterVoice?: string; commentatorVoice?: string; targetDuration?: number };
     if (!script || script.length < 80 || script.length > 32000) return Response.json({ error: "O roteiro deve ter entre 80 e 32.000 caracteres." }, { status: 400 });
+
+    const selectedDuration = [5, 10, 15, 20].includes(Number(targetDuration)) ? Number(targetDuration) : 10;
+    const maximumWords: Record<number, number> = { 5: 520, 10: 1050, 15: 1570, 20: 2100 };
+    const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount > maximumWords[selectedDuration]) return Response.json({ error: `O roteiro tem ${wordCount} palavras. O máximo para ${selectedDuration} minutos é ${maximumWords[selectedDuration]}.` }, { status: 422 });
+
     const femaleVoices = ["Kore", "Aoede", "Leda", "Zephyr"];
     const maleVoices = ["Puck", "Charon", "Fenrir", "Orus"];
     const deboraVoice = femaleVoices.includes(presenterVoice || "") ? presenterVoice! : "Kore";
     const professorVoice = maleVoices.includes(commentatorVoice || "") ? commentatorVoice! : "Charon";
-    const prompt = `Produza um podcast natural em português brasileiro. Débora é a apresentadora e tem voz feminina, calorosa, clara e curiosa. Professor Fiel é o comentarista e tem voz masculina, serena, segura e didática. Use ritmo conversacional, pausas naturais, entusiasmo moderado e respeito ao conteúdo bíblico. Leia exatamente o diálogo abaixo, sem anunciar os nomes dos participantes:\n\n${script}`;
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${key}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{ responseModalities:["AUDIO"], speechConfig:{ multiSpeakerVoiceConfig:{ speakerVoiceConfigs:[{speaker:"Débora",voiceConfig:{prebuiltVoiceConfig:{voiceName:deboraVoice}}},{speaker:"Professor Fiel",voiceConfig:{prebuiltVoiceConfig:{voiceName:professorVoice}}}] } } } }) });
-    const data = await response.json() as any;
-    if (!response.ok) return Response.json({ error: data?.error?.message || "A API Gemini recusou o áudio." }, { status: response.status });
-    const part = data?.candidates?.[0]?.content?.parts?.find((p:any)=>p.inlineData?.data);
-    if (!part) return Response.json({ error: "A API não retornou o áudio." }, { status: 502 });
-    const pcm = Uint8Array.from(atob(part.inlineData.data),(c)=>c.charCodeAt(0)); const rate = Number(part.inlineData.mimeType?.match(/rate=(\d+)/)?.[1]||24000); const wav = pcmToWav(pcm,rate); let binary=""; for(let i=0;i<wav.length;i+=0x8000) binary+=String.fromCharCode(...wav.subarray(i,i+0x8000));
-    return Response.json({audio:btoa(binary)});
-  } catch { return Response.json({error:"Não foi possível gerar o podcast nesta tentativa."},{status:500}); }
+    const chunks = makeChunks(script);
+    if (!chunks.length) return Response.json({ error: "Não foi possível separar o roteiro para a narração." }, { status: 400 });
+
+    const pcmParts: Uint8Array[] = [];
+    for (let index = 0; index < chunks.length; index++) {
+      const prompt = `Este é o bloco ${index + 1} de ${chunks.length} de um único podcast cristão em português brasileiro. Mantenha o mesmo timbre, volume, ritmo e interpretação em todos os blocos. Débora é a apresentadora, com voz feminina calorosa, clara e acolhedora. Professor Fiel é um professor cristão, com voz masculina serena, segura e didática. Use narração contínua, transições suaves, pausas naturais e respeito ao conteúdo bíblico. Leia somente o diálogo abaixo, sem anunciar os nomes dos participantes e sem acrescentar nenhuma fala:\n\n${chunks[index]}`;
+      let response: Response | null = null;
+      let data: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [{ speaker: "Débora", voiceConfig: { prebuiltVoiceConfig: { voiceName: deboraVoice } } }, { speaker: "Professor Fiel", voiceConfig: { prebuiltVoiceConfig: { voiceName: professorVoice } } }] } } } }) });
+        data = await response.json();
+        if (response.ok) break;
+        if (attempt === 0 && (response.status === 429 || response.status >= 500)) await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      if (!response?.ok) return Response.json({ error: data?.error?.message || `A API Gemini recusou o bloco ${index + 1} do áudio.` }, { status: response?.status || 502 });
+      const part = data?.candidates?.[0]?.content?.parts?.find((item: any) => item.inlineData?.data);
+      if (!part) return Response.json({ error: `A API não retornou o bloco ${index + 1} do áudio.` }, { status: 502 });
+      const rawPcm = Uint8Array.from(atob(part.inlineData.data), char => char.charCodeAt(0));
+      pcmParts.push(trimAndNormalizePcm(rawPcm));
+    }
+
+    const combinedPcm = concatenatePcm(pcmParts);
+    const durationSeconds = combinedPcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE);
+    const maximumSeconds = selectedDuration * 60 + 20;
+    if (durationSeconds > maximumSeconds) return Response.json({ error: `O áudio resultou em ${Math.ceil(durationSeconds / 60)} minutos e ultrapassou o limite. Gere novamente para receber uma versão mais objetiva.` }, { status: 422 });
+
+    const wav = pcmToWav(combinedPcm);
+    let binary = "";
+    for (let index = 0; index < wav.length; index += 0x8000) binary += String.fromCharCode(...wav.subarray(index, index + 0x8000));
+    return Response.json({ audio: btoa(binary), durationSeconds: Math.round(durationSeconds), chunks: chunks.length });
+  } catch {
+    return Response.json({ error: "Não foi possível gerar o podcast nesta tentativa." }, { status: 500 });
+  }
 }
