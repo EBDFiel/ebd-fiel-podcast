@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     if (!script || script.length < 80 || script.length > 32000) return Response.json({ error: "O roteiro deve ter entre 80 e 32.000 caracteres." }, { status: 400 });
 
     const selectedDuration = [5, 10, 15, 20].includes(Number(targetDuration)) ? Number(targetDuration) : 10;
-    const maximumWords: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 3150 };
+    const maximumWords: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 4000 };
     const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
     if (wordCount > maximumWords[selectedDuration]) return Response.json({ error: `O roteiro tem ${wordCount} palavras. O máximo para ${selectedDuration} minutos é ${maximumWords[selectedDuration]}.` }, { status: 422 });
 

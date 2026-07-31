@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const CLASSES = ["Adultos", "Jovens", "Adolescentes", "Pré-adolescentes"];
 const DURATIONS = [5, 10, 15, 20];
-const MAX_WORDS: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 3150 };
+const MAX_WORDS: Record<number, number> = { 5: 820, 10: 1600, 15: 2380, 20: 4000 };
+const MAX_READY_WORDS = 4000;
 const VOICES = [
   ["Zephyr", "brilhante"], ["Puck", "animada"], ["Charon", "informativa"], ["Kore", "firme"], ["Fenrir", "empolgante"], ["Leda", "jovem"], ["Orus", "firme"], ["Aoede", "leve"], ["Callirrhoe", "tranquila"], ["Autonoe", "brilhante"], ["Enceladus", "suave"], ["Iapetus", "clara"], ["Umbriel", "descontraída"], ["Algieba", "macia"], ["Despina", "macia"], ["Erinome", "clara"], ["Algenib", "grave"], ["Rasalgethi", "informativa"], ["Laomedeia", "animada"], ["Achernar", "suave"], ["Alnilam", "firme"], ["Schedar", "equilibrada"], ["Gacrux", "madura"], ["Pulcherrima", "direta"], ["Achird", "amigável"], ["Zubenelgenubi", "casual"], ["Vindemiatrix", "gentil"], ["Sadachbia", "viva"], ["Sadaltager", "didática"], ["Sulafat", "acolhedora"],
 ].map(([id, quality]) => ({ id, label: `${id} — ${quality}` }));
@@ -130,6 +131,7 @@ export default function Home() {
   useEffect(() => () => { if (mixedAudioUrl) URL.revokeObjectURL(mixedAudioUrl); }, [mixedAudioUrl]);
 
   const words = useMemo(() => script.trim() ? script.trim().split(/\s+/).length : 0, [script]);
+  const scriptMinutes = Math.max(1, Math.ceil(words / 160));
   const readyWords = useMemo(() => readyScript.trim() ? readyScript.trim().split(/\s+/).length : 0, [readyScript]);
   const readyMinutes = Math.max(1, Math.ceil(readyWords / 160));
   const externalPrompt = useMemo(() => buildExternalPrompt(lessonNumber, lessonTitle, publisher, lessonClass), [lessonNumber, lessonTitle, publisher, lessonClass]);
@@ -167,7 +169,7 @@ export default function Home() {
     if (clean.length < 80) return setError("Cole um roteiro maior antes de continuar.");
     if (!/(^|\n)\s*Débora\s*:/i.test(clean)) return setError('Inclua pelo menos uma fala iniciada por "Débora:".');
     if (!/(^|\n)\s*Professor Fiel\s*:/i.test(clean)) return setError('Inclua pelo menos uma fala iniciada por "Professor Fiel:".');
-    if (readyWords > 3150) return setError("O roteiro pronto deve ter no máximo 3.150 palavras para esta versão.");
+    if (readyWords > MAX_READY_WORDS) return setError("O roteiro pronto deve ter no máximo 4.000 palavras para esta versão.");
     const closestDuration = readyWords <= 820 ? 5 : readyWords <= 1600 ? 10 : readyWords <= 2380 ? 15 : 20;
     setTargetDuration(closestDuration); setScript(clean); setDescription("Roteiro pronto enviado pelo usuário."); setStep(2);
     setTimeout(() => document.getElementById("roteiro")?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -177,7 +179,7 @@ export default function Home() {
     if (script.trim().length < 80) return setError("Revise o roteiro antes de gerar o áudio.");
     setLoading("audio"); setError("");
     try {
-      if (words > MAX_WORDS[targetDuration]) return setError(`O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
+      if (words > MAX_WORDS[targetDuration]) return setError(workflowMode === "ready" ? `O roteiro tem ${words} palavras. Reduza para no máximo ${MAX_READY_WORDS} palavras.` : `O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
       const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
@@ -241,7 +243,7 @@ export default function Home() {
       {error && <div className="error" role="alert"><b>!</b><span>{error}</span></div>}
 
       {script && <section className="panel scriptPanel" id="roteiro">
-        <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className={`scriptStats ${words > MAX_WORDS[targetDuration] ? "overLimit" : ""}`}><b>{words}</b> / {MAX_WORDS[targetDuration]} palavras <i/> cerca de {targetDuration} min</div></div>
+        <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className={`scriptStats ${words > MAX_WORDS[targetDuration] ? "overLimit" : ""}`}><b>{words}</b> / {MAX_WORDS[targetDuration]} palavras <i/> aproximadamente {workflowMode === "ready" ? scriptMinutes : targetDuration} min</div></div>
         <div className="speakers"><span><i className="host">D</i><b>Débora</b> apresenta e conduz</span><span><i className="guest">F</i><b>Professor Fiel</b> comenta e ensina</span></div>
         <div className="voiceGrid">
           <div className="voiceCard"><strong>Débora</strong><small>Apresenta, pergunta e comenta</small><label><span>Voz</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={presenterStyle} onChange={e => setPresenterStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label></div>
