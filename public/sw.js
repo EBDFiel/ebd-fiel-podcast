@@ -1,4 +1,4 @@
-const CACHE = "ebd-fiel-podcast-v9-music-library";
+const CACHE = "ebd-fiel-podcast-v10-fewer-tts-requests";
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/music/instrumental-suave.mp3", "/music/piano-contemplativo.mp3", "/music/ambiente-inspirador.mp3", "/music/trilha-solene.mp3"];
 
 self.addEventListener("install", (event) => {

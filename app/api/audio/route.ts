@@ -32,7 +32,7 @@ function splitLongDialogueLine(line: string, maxChars: number) {
   return pieces;
 }
 
-function makeChunks(script: string, maxChars = 1600) {
+function makeChunks(script: string, maxChars = 3000) {
   const clean = script.replace(/^\s*\[(INTRODUÇÃO|DESENVOLVIMENTO|CONCLUSÃO)\]\s*$/gim, "").trim();
   const lines = clean.split(/\n+/).map(line => line.trim()).filter(Boolean).flatMap(line => splitLongDialogueLine(line, maxChars));
   const chunks: string[] = [];
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const professorVoice = voices.includes(commentatorVoice || "") ? commentatorVoice! : "Sadaltager";
     const deboraStyle = styles.includes(presenterStyle || "") ? presenterStyle! : "Viva e envolvente";
     const professorStyle = styles.includes(commentatorStyle || "") ? commentatorStyle! : "Didática e pastoral";
-    const chunks = makeChunks(script);
+    const chunks = makeChunks(script, Math.max(3000, Math.ceil(script.length / 8)));
     if (!chunks.length) return Response.json({ error: "Não foi possível separar o roteiro para a narração." }, { status: 400 });
 
     const pcmParts: Uint8Array[] = [];
@@ -127,9 +127,6 @@ export async function POST(request: Request) {
 
     const combinedPcm = concatenatePcm(pcmParts);
     const durationSeconds = combinedPcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE);
-    const maximumSeconds = selectedDuration * 60 + 20;
-    if (durationSeconds > maximumSeconds) return Response.json({ error: `O áudio resultou em ${Math.ceil(durationSeconds / 60)} minutos e ultrapassou o limite. Gere novamente para receber uma versão mais objetiva.` }, { status: 422 });
-
     const wav = pcmToWav(combinedPcm);
     let binary = "";
     for (let index = 0; index < wav.length; index += 0x8000) binary += String.fromCharCode(...wav.subarray(index, index + 0x8000));
