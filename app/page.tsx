@@ -100,6 +100,7 @@ export default function Home() {
   const [publisher, setPublisher] = useState("Editora Betel");
   const [lessonClass, setLessonClass] = useState("Adultos");
   const [targetDuration, setTargetDuration] = useState(10);
+  const [voiceEngine, setVoiceEngine] = useState<"google" | "gemini">("google");
   const [presenterVoice, setPresenterVoice] = useState("Sadachbia");
   const [commentatorVoice, setCommentatorVoice] = useState("Sadaltager");
   const [presenterStyle, setPresenterStyle] = useState("Viva e envolvente");
@@ -180,7 +181,7 @@ export default function Home() {
     setLoading("audio"); setError("");
     try {
       if (words > MAX_WORDS[targetDuration]) return setError(workflowMode === "ready" ? `O roteiro tem ${words} palavras. Reduza para no máximo ${MAX_READY_WORDS} palavras.` : `O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
-      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration }) });
+      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration, voiceEngine }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
       const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
@@ -245,13 +246,14 @@ export default function Home() {
       {script && <section className="panel scriptPanel" id="roteiro">
         <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className={`scriptStats ${words > MAX_WORDS[targetDuration] ? "overLimit" : ""}`}><b>{words}</b> / {MAX_WORDS[targetDuration]} palavras <i/> aproximadamente {workflowMode === "ready" ? scriptMinutes : targetDuration} min</div></div>
         <div className="speakers"><span><i className="host">D</i><b>Débora</b> apresenta e conduz</span><span><i className="guest">F</i><b>Professor Fiel</b> comenta e ensina</span></div>
+        <div className="durationSection"><span>Mecanismo de voz</span><div className="durationButtons"><button type="button" className={voiceEngine === "google" ? "active" : ""} onClick={() => setVoiceEngine("google")}>Google Cloud TTS — econômico</button><button type="button" className={voiceEngine === "gemini" ? "active" : ""} onClick={() => setVoiceEngine("gemini")}>Gemini TTS — expressivo</button></div><small>{voiceEngine === "google" ? "Recomendado: geração mais estável, volume uniforme e uso da cota mensal do Google Cloud." : "Voz mais interpretativa, porém sujeita ao limite de requisições gratuitas do Gemini."}</small></div>
         <div className="voiceGrid">
           <div className="voiceCard"><strong>Débora</strong><small>Apresenta, pergunta e comenta</small><label><span>Voz</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={presenterStyle} onChange={e => setPresenterStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label></div>
           <div className="voiceCard"><strong>Professor Fiel</strong><small>Explica, ensina e aplica</small><label><span>Voz</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={commentatorStyle} onChange={e => setCommentatorStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label></div>
         </div>
-        <div className="economyNotice"><b>Modo econômico ativo</b><span>As amostras foram desativadas para reservar a cota gratuita da Gemini para a geração do podcast.</span></div>
+        <div className="economyNotice"><b>{voiceEngine === "google" ? "Google Cloud TTS selecionado" : "Gemini TTS selecionado"}</b><span>{voiceEngine === "google" ? "Cada participante será gerado com voz própria e volume normalizado em um único arquivo WAV." : "As amostras permanecem desativadas para reservar a cota Gemini para o podcast completo."}</span></div>
         <textarea className="scriptEditor" value={script} onChange={e => setScript(e.target.value)} aria-label="Roteiro do podcast"/>
-        <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando em blocos; aguarde...</> : <>🎙 Gerar com Débora e Professor Fiel</>}</button></div>
+        <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando em blocos; aguarde...</> : <>🎙 Gerar com {voiceEngine === "google" ? "Google Cloud" : "Gemini"}</>}</button></div>
       </section>}
 
       {audioUrl && <section className="panel resultPanel" id="resultado">
