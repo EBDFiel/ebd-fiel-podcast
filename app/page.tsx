@@ -79,6 +79,13 @@ function fmt(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }
 
+async function readApiResponse(response: Response, emptyMessage: string) {
+  const text = await response.text();
+  if (!text.trim()) throw new Error(emptyMessage);
+  try { return JSON.parse(text); }
+  catch { throw new Error(response.ok ? "O servidor devolveu uma resposta incompleta. Tente novamente." : emptyMessage); }
+}
+
 function audioBufferToWav(buffer: AudioBuffer) {
   const samples = buffer.getChannelData(0); const bytes = new ArrayBuffer(44 + samples.length * 2); const view = new DataView(bytes);
   const write = (offset: number, value: string) => [...value].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
@@ -157,7 +164,7 @@ export default function Home() {
       form.set("className", lessonClass); form.set("duration", String(targetDuration));
       if (file) form.set("file", file);
       const response = await fetch("/api/script", { method: "POST", body: form });
-      const data = await response.json();
+      const data = await readApiResponse(response, "O Render interrompeu a criação do roteiro. Aguarde alguns segundos e tente novamente.");
       if (!response.ok) throw new Error(data.error || "Não foi possível criar o roteiro.");
       setScript(data.script); setDescription(data.description || ""); setLessonTitle(data.title || lessonTitle); setStep(2);
       setTimeout(() => document.getElementById("roteiro")?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -182,7 +189,7 @@ export default function Home() {
     try {
       if (words > MAX_WORDS[targetDuration]) return setError(workflowMode === "ready" ? `O roteiro tem ${words} palavras. Reduza para no máximo ${MAX_READY_WORDS} palavras.` : `O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
       const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration, voiceEngine }) });
-      const data = await response.json();
+      const data = await readApiResponse(response, "O Render interrompeu a geração do áudio. O conteúdo foi preservado; aguarde alguns segundos e tente novamente.");
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
       const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: "audio/wav" });

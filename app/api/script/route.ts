@@ -104,30 +104,9 @@ Responda SOMENTE em JSON válido neste formato:
     }
     if (!parsed) return Response.json({ error: "O Gemini devolveu o roteiro incompleto. Tente novamente; o aplicativo fará uma nova geração." }, { status: 502 });
     const countWords = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
-    const minimumByDuration: Record<number, number> = { 5: 700, 10: 1350, 15: 2050, 20: 2700 };
-    const minimumWords = minimumByDuration[duration];
-    for (let attempt = 0; attempt < 2 && countWords(parsed.script) < minimumWords; attempt++) {
-      const currentWords = countWords(parsed.script);
-      const expansionPrompt = `A resposta anterior ficou curta: ${currentWords} palavras, mas esta opção exige entre ${minimumWords} e ${maxWords} palavras para aproximadamente ${duration} minutos. Reescreva e AMPLIE integralmente o roteiro. Use novamente todo o CONTEÚDO-FONTE fornecido nesta solicitação. Distribua o texto de forma equilibrada entre todos os tópicos. Em CADA tópico, desenvolva explicação bíblica e teológica, exemplo cotidiano, aplicação pessoal, aplicação para a família e aplicação para a igreja. Inclua perguntas, transições e comentários breves de compreensão de Débora. Preserve [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO], a saudação inicial e o encerramento. Não invente doutrinas ou informações ausentes da fonte. NÃO entregue menos de ${minimumWords} palavras. Responda somente em JSON válido no formato {"title":"...","description":"...","script":"..."}.\n\nROTEIRO ANTERIOR QUE PRECISA SER AMPLIADO:\n${parsed.script}`;
-      const expandedResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [...parts, { text: expansionPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.5, maxOutputTokens: 16000 } }) });
-      const expandedData = await expandedResponse.json() as any;
-      if (!expandedResponse.ok && expandedResponse.status === 429) return Response.json({ error: geminiErrorMessage(expandedData, "O limite do Gemini foi atingido durante a ampliação do roteiro.") }, { status: 429 });
-      if (expandedResponse.ok) { const expandedRaw = expandedData?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || "").join("") || ""; const expandedParsed = parseModelJson(expandedRaw); if (expandedParsed?.script && countWords(expandedParsed.script) > countWords(parsed.script) && countWords(expandedParsed.script) <= maxWords) parsed = expandedParsed; }
-    }
-    if (countWords(parsed.script) > maxWords) {
-      const compressionPrompt = `Reduza o roteiro abaixo para NO MÁXIMO ${maxWords} palavras, preservando obrigatoriamente os marcadores [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO], a ordem de todos os tópicos, as falas de Débora e Professor Fiel, a saudação inicial, as aplicações para vida pessoal, família e igreja, a palavra de ânimo e o encerramento "EBD Fiel — Fiel à Palavra.". Elimine repetições e detalhes secundários. Responda somente em JSON válido no formato {"title":"...","description":"...","script":"..."}.\n\nROTEIRO:\n${parsed.script}`;
-      const compactResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: compressionPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.25 } }) });
-      const compactData = await compactResponse.json() as any;
-      if (compactResponse.ok) {
-        const compactRaw = compactData?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || "").join("") || "";
-        const compactParsed = parseModelJson(compactRaw);
-        if (compactParsed?.script && countWords(compactParsed.script) <= maxWords) parsed = compactParsed;
-      }
-    }
     const finalWordCount = countWords(parsed.script);
-    if (finalWordCount < minimumWords) return Response.json({ error: `O roteiro ficou com ${finalWordCount} palavras, abaixo do necessário para aproximadamente ${duration} minutos. Clique novamente para gerar uma versão completa.` }, { status: 422 });
     if (finalWordCount > maxWords) return Response.json({ error: `O roteiro ultrapassou ${maxWords} palavras. Clique novamente para gerar uma versão mais objetiva.` }, { status: 422 });
-    return Response.json({ title: parsed.title || title, description: parsed.description || "", script: parsed.script, wordCount: finalWordCount, estimatedSeconds: Math.ceil(finalWordCount / 160 * 60) });
+    return Response.json({ title: parsed.title || title, description: parsed.description || "", script: parsed.script, wordCount: finalWordCount, estimatedSeconds: Math.ceil(finalWordCount / 160 * 60), durationNotice: `Roteiro criado com ${finalWordCount} palavras. O tempo final dependerá do ritmo das vozes.` });
   } catch (e) {
     const message = e instanceof Error ? e.message : "";
     return Response.json({ error: message.includes("fetch") ? "Não foi possível acessar a fonte informada." : message || "Não foi possível criar o roteiro nesta tentativa." }, { status: 500 });
