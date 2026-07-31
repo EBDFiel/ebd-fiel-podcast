@@ -18,6 +18,51 @@ const BUILTIN_MUSIC = [
 const EXAMPLE = "A lição desta semana destaca a importância de ouvir a Palavra de Deus, compreender seus ensinamentos e aplicá-los de maneira prática. A fé cristã não se limita ao conhecimento, mas produz transformação, comunhão e serviço.";
 const SCRIPT_TEMPLATE = `[INTRODUÇÃO]\nDébora: A PAZ DO SENHOR JESUS A TODOS! Sejam bem-vindos ao EBD Fiel Podcast.\n\nProfessor Fiel: A paz do Senhor, Débora. Hoje estudaremos uma lição muito importante.\n\n[DESENVOLVIMENTO]\nDébora: Professor Fiel, apresente o primeiro tópico da nossa lição.\n\nProfessor Fiel: Escreva aqui a explicação bíblica, o exemplo e as aplicações.\n\nDébora: Escreva aqui um comentário breve sobre o que foi explicado.\n\n[CONCLUSÃO]\nProfessor Fiel: Escreva aqui o resumo e a palavra de ânimo para a semana.\n\nDébora: Agradecemos a todos. FIQUEM COM DEUS! EBD Fiel — Fiel à Palavra.`;
 
+function buildExternalPrompt(lessonNumber: string, lessonTitle: string, publisher: string, lessonClass: string) {
+  return `Crie um roteiro de podcast cristão, com linguagem clara, acolhedora, envolvente e fiel às Escrituras, adequado para narração contínua com duas pessoas.
+
+DADOS DA LIÇÃO
+- Número: Lição ${lessonNumber || "[NÚMERO]"}
+- Título: ${lessonTitle || "[TÍTULO DA LIÇÃO]"}
+- Editora: ${publisher || "[EDITORA]"}
+- Classe: ${lessonClass || "[CLASSE]"}
+
+PERSONAGENS
+- Débora: apresentadora. Ela conduz a conversa, faz perguntas e também comenta brevemente o que compreendeu das explicações, de maneira natural e edificante.
+- Professor Fiel: professor cristão e comentarista. Ele explica, ensina e aplica cada tópico com clareza bíblica, teológica e pastoral.
+
+FORMATAÇÃO OBRIGATÓRIA
+- Escreva somente o roteiro final, sem observações externas.
+- Identifique todas as falas exatamente com “Débora:” ou “Professor Fiel:”.
+- Estruture obrigatoriamente em [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO].
+- Mantenha transições suaves e uma conversa natural, sem repetições desnecessárias.
+- Comente todos os tópicos e subtópicos da lição na ordem original.
+
+[INTRODUÇÃO]
+- Débora deve iniciar exatamente com: “A PAZ DO SENHOR JESUS A TODOS”.
+- Apresente o EBD Fiel Podcast e informe que hoje a EBD Fiel apresenta um resumo da Lição ${lessonNumber || "[NÚMERO]"} – ${lessonTitle || "[TÍTULO]"}, da ${publisher || "[EDITORA]"}.
+- Convide naturalmente os ouvintes a acompanhar, compartilhar e divulgar o conteúdo no Instagram, TikTok e YouTube, destacando a importância de fortalecer a Escola Bíblica Dominical e espalhar a Palavra de Deus.
+
+[DESENVOLVIMENTO]
+Comente cada tópico e subtópico sequencialmente. Em cada um, inclua:
+- explicação bíblica e teológica clara e fiel às Escrituras;
+- exemplos práticos do cotidiano cristão;
+- aplicações espirituais para a vida pessoal, a família e a igreja;
+- uma pergunta ou transição de Débora;
+- uma explicação completa do Professor Fiel;
+- uma breve compreensão ou aplicação comentada por Débora após a explicação.
+
+[CONCLUSÃO]
+- Apresente um resumo claro e inspirador das principais lições.
+- Encoraje os ouvintes a perseverarem na fé e viverem como novas criaturas em Cristo.
+- Inclua uma palavra de ânimo para a semana que se inicia.
+- Débora deve agradecer aos ouvintes e dizer: “FIQUEM COM DEUS!”.
+- Termine exatamente com: “EBD Fiel — Fiel à Palavra.”
+
+CONTEÚDO-BASE DA LIÇÃO
+[COLE AQUI O CONTEÚDO COMPLETO DA LIÇÃO, OS TÓPICOS, SUBTÓPICOS E REFERÊNCIAS BÍBLICAS]`;
+}
+
 type HistoryItem = { title: string; date: string; duration: number };
 
 function fmt(seconds: number) {
@@ -36,6 +81,8 @@ export default function Home() {
   const [sourceMode, setSourceMode] = useState<"text" | "pdf" | "url">("text");
   const [sourceText, setSourceText] = useState(EXAMPLE);
   const [readyScript, setReadyScript] = useState("");
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [lessonNumber, setLessonNumber] = useState("5");
@@ -76,6 +123,15 @@ export default function Home() {
   const words = useMemo(() => script.trim() ? script.trim().split(/\s+/).length : 0, [script]);
   const readyWords = useMemo(() => readyScript.trim() ? readyScript.trim().split(/\s+/).length : 0, [readyScript]);
   const readyMinutes = Math.max(1, Math.ceil(readyWords / 160));
+  const externalPrompt = useMemo(() => buildExternalPrompt(lessonNumber, lessonTitle, publisher, lessonClass), [lessonNumber, lessonTitle, publisher, lessonClass]);
+
+  async function copyExternalPrompt() {
+    try {
+      await navigator.clipboard.writeText(externalPrompt);
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 2200);
+    } catch { setError("Não foi possível copiar automaticamente. Selecione o texto do modelo e copie manualmente."); }
+  }
 
   async function createScript() {
     if (sourceMode === "text" && sourceText.trim().length < 40) return setError("Cole um conteúdo maior para gerar um roteiro fiel.");
@@ -162,7 +218,7 @@ export default function Home() {
           {sourceMode === "text" && <div className="textBox"><textarea value={sourceText} onChange={e => setSourceText(e.target.value)} maxLength={30000} placeholder="Cole o conteúdo da lição, subsídios ou anotações..."/><small>{sourceText.length.toLocaleString("pt-BR")} / 30.000 caracteres</small></div>}
           {sourceMode === "pdf" && <label className="drop"><input type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)}/><b>↑</b><strong>{file ? file.name : "Selecione o PDF da lição"}</strong><span>Arquivo PDF de até 15 MB</span></label>}
           {sourceMode === "url" && <label className="urlInput"><span>Endereço da página</span><input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="https://exemplo.com/licao-da-semana"/></label>}
-        </> : <><div className="textBox"><textarea value={readyScript} onChange={e => setReadyScript(e.target.value)} maxLength={30000} placeholder={'Cole o roteiro usando "Débora:" e "Professor Fiel:" antes de cada fala.'}/><small>{readyWords.toLocaleString("pt-BR")} palavras • aproximadamente {readyMinutes} min</small></div><div className="readyHelper"><span>O roteiro pronto não utiliza a IA para escrever.</span><button className="secondary" onClick={() => setReadyScript(SCRIPT_TEMPLATE)}>Carregar modelo de roteiro</button></div></>}
+        </> : <><div className="textBox"><textarea value={readyScript} onChange={e => setReadyScript(e.target.value)} maxLength={30000} placeholder={'Cole o roteiro usando "Débora:" e "Professor Fiel:" antes de cada fala.'}/><small>{readyWords.toLocaleString("pt-BR")} palavras • aproximadamente {readyMinutes} min</small></div><div className="readyHelper"><span>O roteiro pronto não utiliza a IA do aplicativo para escrever.</span><div><button className="secondary" onClick={() => setReadyScript(SCRIPT_TEMPLATE)}>Carregar modelo simples</button><button className="secondary promptToggle" onClick={() => setPromptOpen(value => !value)}>{promptOpen ? "Fechar modelo para o GPT" : "Ver modelo para o GPT"}</button></div></div>{promptOpen && <div className="promptModel"><div><div><strong>Modelo de prompt para gerar o roteiro</strong><small>Os dados da lição preenchidos abaixo entram automaticamente no modelo.</small></div><button onClick={copyExternalPrompt}>{promptCopied ? "✓ Prompt copiado" : "▣ Copiar prompt"}</button></div><textarea readOnly value={externalPrompt}/><p>Copie este modelo, cole no ChatGPT e substitua o trecho final pelo conteúdo completo da lição. Depois, cole aqui o roteiro gerado.</p></div>}</>}
         <div className="lessonMetaGrid">
           <label><span>Número da lição</span><input value={lessonNumber} onChange={e => setLessonNumber(e.target.value)} placeholder="Ex.: 5"/></label>
           <label><span>Título da lição</span><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Digite o título"/></label>
