@@ -38,6 +38,15 @@ FORMATAÇÃO OBRIGATÓRIA
 - Mantenha transições suaves e uma conversa natural, sem repetições desnecessárias.
 - Comente todos os tópicos e subtópicos da lição na ordem original.
 
+PRONÚNCIA DAS REFERÊNCIAS BÍBLICAS
+- Escreva todas as referências bíblicas por extenso, exatamente como devem ser pronunciadas na narração.
+- Nunca use ponto, dois-pontos, vírgula ou hífen para separar capítulo e versículo nas falas.
+- Exemplo: “Provérbios 3.9” deve se tornar “Provérbios, capítulo 3, versículo 9”.
+- Exemplo: “João 3.16-17” deve se tornar “João, capítulo 3, versículos 16 e 17”.
+- Exemplo: “Romanos 8.1,2” deve se tornar “Romanos, capítulo 8, versículos 1 e 2”.
+- Exemplo: “Salmos 23.1-4” deve se tornar “Salmos, capítulo 23, do versículo 1 ao 4”.
+- Aplique essa conversão a todas as referências citadas no roteiro, preservando corretamente o nome do livro, o capítulo e os versículos.
+
 [INTRODUÇÃO]
 - Débora deve iniciar exatamente com: “A PAZ DO SENHOR JESUS A TODOS”.
 - Apresente o EBD Fiel Podcast e informe que hoje a EBD Fiel apresenta um resumo da Lição ${lessonNumber || "[NÚMERO]"} – ${lessonTitle || "[TÍTULO]"}, da ${publisher || "[EDITORA]"}.
