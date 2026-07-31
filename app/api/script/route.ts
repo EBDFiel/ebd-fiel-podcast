@@ -75,19 +75,21 @@ Regras obrigatórias:
 
 Responda SOMENTE em JSON válido neste formato:
 {"title":"título final","description":"descrição de até 240 caracteres","script":"[INTRODUÇÃO]\\nDébora: ...\\n\\nProfessor Fiel: ...\\n\\n[DESENVOLVIMENTO]\\n...\\n\\n[CONCLUSÃO]\\n..."}` });
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", temperature: 0.65 } }) });
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", temperature: 0.65, maxOutputTokens: 16000 } }) });
     const data = await response.json() as any;
     if (!response.ok) return Response.json({ error: data?.error?.message || "A API Gemini recusou a solicitação." }, { status: response.status });
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     let parsed = JSON.parse(raw);
     if (!parsed.script) throw new Error("Roteiro ausente");
     const countWords = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
-    const minimumWords = Math.floor(targetWords[duration] * 0.78);
-    if (countWords(parsed.script) < minimumWords) {
-      const expansionPrompt = `Amplie o roteiro abaixo para ficar entre ${minimumWords} e ${maxWords} palavras, adequado para aproximadamente ${duration} minutos de narração. Preserve rigorosamente [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO], a ordem dos tópicos, a saudação, as falas de Débora e Professor Fiel, as aplicações para vida pessoal, família e igreja e o encerramento. Aprofunde apenas as explicações e aplicações sustentadas pelo conteúdo já presente, sem inventar fatos ou doutrinas. Débora deve perguntar e também comentar brevemente o que compreendeu. Responda somente em JSON válido no formato {"title":"...","description":"...","script":"..."}.\n\nROTEIRO:\n${parsed.script}`;
-      const expandedResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: expansionPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.45 } }) });
+    const minimumByDuration: Record<number, number> = { 5: 700, 10: 1350, 15: 2050, 20: 2700 };
+    const minimumWords = minimumByDuration[duration];
+    for (let attempt = 0; attempt < 2 && countWords(parsed.script) < minimumWords; attempt++) {
+      const currentWords = countWords(parsed.script);
+      const expansionPrompt = `A resposta anterior ficou curta: ${currentWords} palavras, mas esta opção exige entre ${minimumWords} e ${maxWords} palavras para aproximadamente ${duration} minutos. Reescreva e AMPLIE integralmente o roteiro. Use novamente todo o CONTEÚDO-FONTE fornecido nesta solicitação. Distribua o texto de forma equilibrada entre todos os tópicos. Em CADA tópico, desenvolva explicação bíblica e teológica, exemplo cotidiano, aplicação pessoal, aplicação para a família e aplicação para a igreja. Inclua perguntas, transições e comentários breves de compreensão de Débora. Preserve [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO], a saudação inicial e o encerramento. Não invente doutrinas ou informações ausentes da fonte. NÃO entregue menos de ${minimumWords} palavras. Responda somente em JSON válido no formato {"title":"...","description":"...","script":"..."}.\n\nROTEIRO ANTERIOR QUE PRECISA SER AMPLIADO:\n${parsed.script}`;
+      const expandedResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [...parts, { text: expansionPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.5, maxOutputTokens: 16000 } }) });
       const expandedData = await expandedResponse.json() as any;
-      if (expandedResponse.ok) { const expandedRaw = expandedData?.candidates?.[0]?.content?.parts?.[0]?.text || ""; const expandedParsed = JSON.parse(expandedRaw); if (expandedParsed.script && countWords(expandedParsed.script) >= minimumWords && countWords(expandedParsed.script) <= maxWords) parsed = expandedParsed; }
+      if (expandedResponse.ok) { const expandedRaw = expandedData?.candidates?.[0]?.content?.parts?.[0]?.text || ""; const expandedParsed = JSON.parse(expandedRaw); if (expandedParsed.script && countWords(expandedParsed.script) > countWords(parsed.script) && countWords(expandedParsed.script) <= maxWords) parsed = expandedParsed; }
     }
     if (countWords(parsed.script) > maxWords) {
       const compressionPrompt = `Reduza o roteiro abaixo para NO MÁXIMO ${maxWords} palavras, preservando obrigatoriamente os marcadores [INTRODUÇÃO], [DESENVOLVIMENTO] e [CONCLUSÃO], a ordem de todos os tópicos, as falas de Débora e Professor Fiel, a saudação inicial, as aplicações para vida pessoal, família e igreja, a palavra de ânimo e o encerramento "EBD Fiel — Fiel à Palavra.". Elimine repetições e detalhes secundários. Responda somente em JSON válido no formato {"title":"...","description":"...","script":"..."}.\n\nROTEIRO:\n${parsed.script}`;
@@ -100,6 +102,7 @@ Responda SOMENTE em JSON válido neste formato:
       }
     }
     const finalWordCount = countWords(parsed.script);
+    if (finalWordCount < minimumWords) return Response.json({ error: `O roteiro ficou com ${finalWordCount} palavras, abaixo do necessário para aproximadamente ${duration} minutos. Clique novamente para gerar uma versão completa.` }, { status: 422 });
     if (finalWordCount > maxWords) return Response.json({ error: `O roteiro ultrapassou ${maxWords} palavras. Clique novamente para gerar uma versão mais objetiva.` }, { status: 422 });
     return Response.json({ title: parsed.title || title, description: parsed.description || "", script: parsed.script, wordCount: finalWordCount, estimatedSeconds: Math.ceil(finalWordCount / 160 * 60) });
   } catch (e) {
