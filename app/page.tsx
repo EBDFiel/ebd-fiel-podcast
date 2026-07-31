@@ -96,7 +96,7 @@ export default function Home() {
   }
 
   return <main>
-    <header><div className="shell nav"><div className="brand"><div className="brandmark">EF</div><div><strong>EBD Fiel</strong><small>Podcast da Lição</small></div></div><span className="private"><i /> Uso particular EBD Fiel</span></div></header>
+    <header><div className="shell nav"><div className="brand"><img className="brandLogo" src="/icon-192.png" alt="Logo Podcast EBD Fiel"/><div><strong>EBD Fiel</strong><small>Podcast da Lição</small></div></div><span className="private"><i /> Uso particular EBD Fiel</span></div></header>
 
     <section className="hero"><div className="shell heroGrid"><div><div className="eyebrow">✦ CONTEÚDO QUE EDIFICA, VOZES QUE CONECTAM</div><h1>Transforme a lição da semana em uma <em>conversa que inspira.</em></h1><p>Envie o conteúdo, revise o roteiro e produza um podcast com duas vozes naturais para sua Escola Bíblica Dominical.</p><div className="features"><span>◉ Duas vozes</span><span>✎ Roteiro revisável</span><span>↓ Download em WAV</span></div></div><div className="podcastArt"><div className="ring r1"/><div className="ring r2"/><div className="mic">🎙</div><div className="wave"><b/><b/><b/><b/><b/><b/><b/></div><small>ESTÚDIO EBD FIEL</small></div></div></section>
 
@@ -134,6 +134,6 @@ export default function Home() {
 
       {history.length > 0 && <section className="history"><h2>Histórico neste dispositivo</h2><div>{history.map((item, i) => <article key={i}><span>🎧</span><div><b>{item.title}</b><small>{item.date} • {item.duration} minutos</small></div></article>)}</div></section>}
     </section>
-    <footer><div className="shell"><div className="brand"><div className="brandmark">EF</div><div><strong>EBD Fiel</strong><small>Ensino bíblico que transforma</small></div></div><p>Ferramenta de uso particular • EBD Fiel © 2026</p></div></footer>
+    <footer><div className="shell"><div className="brand"><img className="brandLogo footerLogo" src="/icon-192.png" alt="Logo Podcast EBD Fiel"/><div><strong>EBD Fiel</strong><small>Ensino bíblico que transforma</small></div></div><p>Ferramenta de uso particular • EBD Fiel © 2026</p></div></footer>
   </main>;
 }

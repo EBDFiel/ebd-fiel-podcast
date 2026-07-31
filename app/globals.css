@@ -6,3 +6,6 @@
 .voiceGrid label>span{display:block;text-transform:uppercase;letter-spacing:.1em;font-size:8px;font-weight:800;color:#718597;margin-bottom:7px}
 .voiceGrid select{width:100%;border:1px solid #d7e2e9;border-radius:9px;padding:11px;color:#29455d;outline:0;background:#fff}
 @media(max-width:620px){.voiceGrid{grid-template-columns:1fr}}
+.brandLogo{width:50px;height:50px;display:block;object-fit:contain;border-radius:13px;box-shadow:0 5px 14px #0a4b7922}
+.brandLogo.footerLogo{width:54px;height:54px}
+@media(max-width:620px){.brandLogo{width:44px;height:44px}.brandLogo.footerLogo{width:50px;height:50px}}
