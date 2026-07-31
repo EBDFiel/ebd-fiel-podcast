@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const professorVoice = voices.includes(commentatorVoice || "") ? commentatorVoice! : "Sadaltager";
     const deboraStyle = styles.includes(presenterStyle || "") ? presenterStyle! : "Viva e envolvente";
     const professorStyle = styles.includes(commentatorStyle || "") ? commentatorStyle! : "Didática e pastoral";
-    const chunks = makeChunks(script, Math.max(3000, Math.ceil(script.length / 8)));
+    const chunks = makeChunks(script, Math.max(3800, Math.ceil(script.length / 6)));
     if (!chunks.length) return Response.json({ error: "Não foi possível separar o roteiro para a narração." }, { status: 400 });
 
     const pcmParts: Uint8Array[] = [];
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
         if (response.status === 429 && attempt < 2) { const message = String(data?.error?.message || ""); const seconds = Number(message.match(/retry in ([0-9.]+)s/i)?.[1] || 60); await new Promise(resolve => setTimeout(resolve, Math.min(70000, Math.max(58000, (seconds + 3) * 1000)))); continue; }
         if (response.status >= 500 && attempt < 2) await new Promise(resolve => setTimeout(resolve, 1800));
       }
-      if (!response?.ok) return Response.json({ error: data?.error?.message || `A API Gemini recusou o bloco ${index + 1} do áudio.` }, { status: response?.status || 502 });
+      if (!response?.ok) return Response.json({ error: response?.status === 429 ? "O limite gratuito de voz está temporariamente ocupado. Aguarde cerca de um minuto e tente gerar novamente." : data?.error?.message || `A API Gemini recusou o bloco ${index + 1} do áudio.` }, { status: response?.status || 502 });
       const part = data?.candidates?.[0]?.content?.parts?.find((item: any) => item.inlineData?.data);
       if (!part) return Response.json({ error: `A API não retornou o bloco ${index + 1} do áudio.` }, { status: 502 });
       const rawPcm = Uint8Array.from(atob(part.inlineData.data), char => char.charCodeAt(0));

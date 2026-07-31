@@ -44,7 +44,6 @@ export default function Home() {
   const [commentatorVoice, setCommentatorVoice] = useState("Sadaltager");
   const [presenterStyle, setPresenterStyle] = useState("Viva e envolvente");
   const [commentatorStyle, setCommentatorStyle] = useState("Didática e pastoral");
-  const [previewLoading, setPreviewLoading] = useState("");
   const [musicMode, setMusicMode] = useState<"none" | "music">("none");
   const [musicSource, setMusicSource] = useState<"library" | "upload">("library");
   const [selectedMusic, setSelectedMusic] = useState(BUILTIN_MUSIC[0].path);
@@ -63,7 +62,6 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const previewCache = useRef<Record<string, string>>({});
 
   useEffect(() => {
     try { setHistory(JSON.parse(localStorage.getItem("ebd-podcast-history") || "[]")); } catch { setHistory([]); }
@@ -118,16 +116,6 @@ export default function Home() {
     navigator.clipboard.writeText(`🎙️ *EBD Fiel Podcast*\n\n*${lessonTitle}*\n${description}\n\nOuça e compartilhe com sua classe.`);
   }
 
-  async function previewVoice(role: "Débora" | "Professor Fiel") {
-    const presenter = role === "Débora"; setPreviewLoading(role); setError("");
-    try {
-      const voice = presenter ? presenterVoice : commentatorVoice; const style = presenter ? presenterStyle : commentatorStyle; const cacheKey = `${role}|${voice}|${style}`;
-      let encoded = previewCache.current[cacheKey];
-      if (!encoded) { const response = await fetch("/api/voice-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, voice, style }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível ouvir a voz."); encoded = data.audio; previewCache.current[cacheKey] = encoded; }
-      const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })); const sample = new Audio(url); sample.onended = () => URL.revokeObjectURL(url); await sample.play();
-    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ouvir a voz."); } finally { setPreviewLoading(""); }
-  }
-
   async function mixWithMusic() {
     if (!audioUrl || (musicSource === "upload" && !musicFile)) return setError("Escolha primeiro uma música MP3 ou WAV.");
     if (musicSource === "upload" && musicFile && musicFile.size > 25 * 1024 * 1024) return setError("A música deve ter no máximo 25 MB.");
@@ -172,9 +160,10 @@ export default function Home() {
         <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className={`scriptStats ${words > MAX_WORDS[targetDuration] ? "overLimit" : ""}`}><b>{words}</b> / {MAX_WORDS[targetDuration]} palavras <i/> cerca de {targetDuration} min</div></div>
         <div className="speakers"><span><i className="host">D</i><b>Débora</b> apresenta e conduz</span><span><i className="guest">F</i><b>Professor Fiel</b> comenta e ensina</span></div>
         <div className="voiceGrid">
-          <div className="voiceCard"><strong>Débora</strong><small>Apresenta, pergunta e comenta</small><label><span>Voz</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={presenterStyle} onChange={e => setPresenterStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label><button className="previewVoice" onClick={() => previewVoice("Débora")} disabled={!!previewLoading}>{previewLoading === "Débora" ? "Preparando..." : "▶ Ouvir amostra"}</button></div>
-          <div className="voiceCard"><strong>Professor Fiel</strong><small>Explica, ensina e aplica</small><label><span>Voz</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={commentatorStyle} onChange={e => setCommentatorStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label><button className="previewVoice" onClick={() => previewVoice("Professor Fiel")} disabled={!!previewLoading}>{previewLoading === "Professor Fiel" ? "Preparando..." : "▶ Ouvir amostra"}</button></div>
+          <div className="voiceCard"><strong>Débora</strong><small>Apresenta, pergunta e comenta</small><label><span>Voz</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={presenterStyle} onChange={e => setPresenterStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label></div>
+          <div className="voiceCard"><strong>Professor Fiel</strong><small>Explica, ensina e aplica</small><label><span>Voz</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label><label><span>Interpretação</span><select value={commentatorStyle} onChange={e => setCommentatorStyle(e.target.value)}>{VOICE_STYLES.map(style => <option key={style}>{style}</option>)}</select></label></div>
         </div>
+        <div className="economyNotice"><b>Modo econômico ativo</b><span>As amostras foram desativadas para reservar a cota gratuita da Gemini para a geração do podcast.</span></div>
         <textarea className="scriptEditor" value={script} onChange={e => setScript(e.target.value)} aria-label="Roteiro do podcast"/>
         <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando em blocos; aguarde...</> : <>🎙 Gerar com Débora e Professor Fiel</>}</button></div>
       </section>}
