@@ -7,10 +7,14 @@ export async function POST(request: Request) {
   try {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return Response.json({ error: "A chave Gemini ainda não foi configurada." }, { status: 503 });
-    const { script } = await request.json() as { script?: string };
+    const { script, presenterVoice, commentatorVoice } = await request.json() as { script?: string; presenterVoice?: string; commentatorVoice?: string };
     if (!script || script.length < 80 || script.length > 32000) return Response.json({ error: "O roteiro deve ter entre 80 e 32.000 caracteres." }, { status: 400 });
-    const prompt = `Produza um podcast natural em português brasileiro. Apresentador tem voz calorosa, clara e curiosa. Comentarista tem voz serena, segura e didática. Use ritmo conversacional, pausas naturais, entusiasmo moderado e respeito ao conteúdo bíblico. Leia exatamente o diálogo abaixo, sem anunciar os nomes dos participantes:\n\n${script}`;
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${key}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{ responseModalities:["AUDIO"], speechConfig:{ multiSpeakerVoiceConfig:{ speakerVoiceConfigs:[{speaker:"Apresentador",voiceConfig:{prebuiltVoiceConfig:{voiceName:"Puck"}}},{speaker:"Comentarista",voiceConfig:{prebuiltVoiceConfig:{voiceName:"Kore"}}}] } } } }) });
+    const femaleVoices = ["Kore", "Aoede", "Leda", "Zephyr"];
+    const maleVoices = ["Puck", "Charon", "Fenrir", "Orus"];
+    const deboraVoice = femaleVoices.includes(presenterVoice || "") ? presenterVoice! : "Kore";
+    const professorVoice = maleVoices.includes(commentatorVoice || "") ? commentatorVoice! : "Charon";
+    const prompt = `Produza um podcast natural em português brasileiro. Débora é a apresentadora e tem voz feminina, calorosa, clara e curiosa. Professor Fiel é o comentarista e tem voz masculina, serena, segura e didática. Use ritmo conversacional, pausas naturais, entusiasmo moderado e respeito ao conteúdo bíblico. Leia exatamente o diálogo abaixo, sem anunciar os nomes dos participantes:\n\n${script}`;
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${key}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{ responseModalities:["AUDIO"], speechConfig:{ multiSpeakerVoiceConfig:{ speakerVoiceConfigs:[{speaker:"Débora",voiceConfig:{prebuiltVoiceConfig:{voiceName:deboraVoice}}},{speaker:"Professor Fiel",voiceConfig:{prebuiltVoiceConfig:{voiceName:professorVoice}}}] } } } }) });
     const data = await response.json() as any;
     if (!response.ok) return Response.json({ error: data?.error?.message || "A API Gemini recusou o áudio." }, { status: response.status });
     const part = data?.candidates?.[0]?.content?.parts?.find((p:any)=>p.inlineData?.data);

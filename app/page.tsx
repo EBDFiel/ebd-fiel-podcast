@@ -3,7 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const CLASSES = ["Adultos", "Jovens", "Adolescentes", "Pré-adolescentes"];
-const DURATIONS = [5, 10, 15];
+const DURATIONS = [5, 10, 15, 20];
+const FEMALE_VOICES = [
+  { id: "Kore", label: "Kore — clara e envolvente" },
+  { id: "Aoede", label: "Aoede — leve e natural" },
+  { id: "Leda", label: "Leda — jovem e acolhedora" },
+  { id: "Zephyr", label: "Zephyr — calma e suave" },
+];
+const MALE_VOICES = [
+  { id: "Puck", label: "Puck — dinâmica e comunicativa" },
+  { id: "Charon", label: "Charon — firme e profunda" },
+  { id: "Fenrir", label: "Fenrir — madura e segura" },
+  { id: "Orus", label: "Orus — didática e equilibrada" },
+];
 const EXAMPLE = "A lição desta semana destaca a importância de ouvir a Palavra de Deus, compreender seus ensinamentos e aplicá-los de maneira prática. A fé cristã não se limita ao conhecimento, mas produz transformação, comunhão e serviço.";
 
 type HistoryItem = { title: string; date: string; duration: number };
@@ -20,6 +32,8 @@ export default function Home() {
   const [lessonTitle, setLessonTitle] = useState("A fé que transforma");
   const [lessonClass, setLessonClass] = useState("Adultos");
   const [targetDuration, setTargetDuration] = useState(10);
+  const [presenterVoice, setPresenterVoice] = useState("Kore");
+  const [commentatorVoice, setCommentatorVoice] = useState("Charon");
   const [script, setScript] = useState("");
   const [description, setDescription] = useState("");
   const [step, setStep] = useState(1);
@@ -63,7 +77,7 @@ export default function Home() {
     if (script.trim().length < 80) return setError("Revise o roteiro antes de gerar o áudio.");
     setLoading("audio"); setError("");
     try {
-      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }) });
+      const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
       const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
@@ -95,7 +109,7 @@ export default function Home() {
         {sourceMode === "text" && <div className="textBox"><textarea value={sourceText} onChange={e => setSourceText(e.target.value)} maxLength={30000} placeholder="Cole o conteúdo da lição, subsídios ou anotações..."/><small>{sourceText.length.toLocaleString("pt-BR")} / 30.000 caracteres</small></div>}
         {sourceMode === "pdf" && <label className="drop"><input type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)}/><b>↑</b><strong>{file ? file.name : "Selecione o PDF da lição"}</strong><span>Arquivo PDF de até 15 MB</span></label>}
         {sourceMode === "url" && <label className="urlInput"><span>Endereço da página</span><input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="https://exemplo.com/licao-da-semana"/></label>}
-        <div className="settingsGrid"><label><span>Título da lição</span><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Digite o título"/></label><label><span>Classe</span><select value={lessonClass} onChange={e => setLessonClass(e.target.value)}>{CLASSES.map(c => <option key={c}>{c}</option>)}</select></label><div><span>Duração aproximada</span><div className="durationButtons">{DURATIONS.map(d => <button className={targetDuration === d ? "active" : ""} onClick={() => setTargetDuration(d)} key={d}>{d} min</button>)}</div></div></div>
+        <div className="settingsGrid"><label><span>Título da lição</span><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Digite o título"/></label><label><span>Classe</span><select value={lessonClass} onChange={e => setLessonClass(e.target.value)}>{CLASSES.map(c => <option key={c}>{c}</option>)}</select></label><div><span>Duração aproximada</span><div className="durationButtons">{DURATIONS.map(d => <button type="button" className={targetDuration === d ? "active" : ""} onClick={() => setTargetDuration(d)} key={d}>{d} min</button>)}</div></div></div>
         <div className="actionRow"><p>O roteiro será um resumo conversacional original, não uma cópia do material.</p><button className="primary" onClick={createScript} disabled={!!loading}>{loading === "script" ? <><i className="spin"/> Criando roteiro...</> : <>✦ Criar roteiro com IA</>}</button></div>
       </section>
 
@@ -103,9 +117,13 @@ export default function Home() {
 
       {script && <section className="panel scriptPanel" id="roteiro">
         <div className="panelTitle"><span>2</span><div><h2>Revise o roteiro</h2><p>Faça os ajustes necessários antes de transformar a conversa em áudio.</p></div><div className="scriptStats"><b>{words}</b> palavras <i/> cerca de {targetDuration} min</div></div>
-        <div className="speakers"><span><i className="host">A</i><b>Apresentador</b> conduz e pergunta</span><span><i className="guest">C</i><b>Comentarista</b> explica e aplica</span></div>
+        <div className="speakers"><span><i className="host">D</i><b>Débora</b> apresenta e conduz</span><span><i className="guest">F</i><b>Professor Fiel</b> comenta e ensina</span></div>
+        <div className="voiceGrid">
+          <label><span>Voz de Débora</span><select value={presenterVoice} onChange={e => setPresenterVoice(e.target.value)}>{FEMALE_VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label>
+          <label><span>Voz do Professor Fiel</span><select value={commentatorVoice} onChange={e => setCommentatorVoice(e.target.value)}>{MALE_VOICES.map(voice => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label>
+        </div>
         <textarea className="scriptEditor" value={script} onChange={e => setScript(e.target.value)} aria-label="Roteiro do podcast"/>
-        <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando podcast...</> : <>🎙 Gerar podcast com duas vozes</>}</button></div>
+        <div className="actionRow"><button className="secondary" onClick={() => setStep(1)}>← Voltar ao conteúdo</button><button className="primary gold" onClick={createAudio} disabled={!!loading}>{loading === "audio" ? <><i className="spin dark"/> Gerando podcast...</> : <>🎙 Gerar com Débora e Professor Fiel</>}</button></div>
       </section>}
 
       {audioUrl && <section className="panel resultPanel" id="resultado">
