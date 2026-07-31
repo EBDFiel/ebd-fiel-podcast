@@ -16,6 +16,7 @@ const BUILTIN_MUSIC = [
   { id: "solene", label: "Trilha solene", path: "/music/trilha-solene.mp3" },
 ];
 const EXAMPLE = "A lição desta semana destaca a importância de ouvir a Palavra de Deus, compreender seus ensinamentos e aplicá-los de maneira prática. A fé cristã não se limita ao conhecimento, mas produz transformação, comunhão e serviço.";
+const SCRIPT_TEMPLATE = `[INTRODUÇÃO]\nDébora: A PAZ DO SENHOR JESUS A TODOS! Sejam bem-vindos ao EBD Fiel Podcast.\n\nProfessor Fiel: A paz do Senhor, Débora. Hoje estudaremos uma lição muito importante.\n\n[DESENVOLVIMENTO]\nDébora: Professor Fiel, apresente o primeiro tópico da nossa lição.\n\nProfessor Fiel: Escreva aqui a explicação bíblica, o exemplo e as aplicações.\n\nDébora: Escreva aqui um comentário breve sobre o que foi explicado.\n\n[CONCLUSÃO]\nProfessor Fiel: Escreva aqui o resumo e a palavra de ânimo para a semana.\n\nDébora: Agradecemos a todos. FIQUEM COM DEUS! EBD Fiel — Fiel à Palavra.`;
 
 type HistoryItem = { title: string; date: string; duration: number };
 
@@ -31,8 +32,10 @@ function audioBufferToWav(buffer: AudioBuffer) {
 }
 
 export default function Home() {
+  const [workflowMode, setWorkflowMode] = useState<"ai" | "ready">("ai");
   const [sourceMode, setSourceMode] = useState<"text" | "pdf" | "url">("text");
   const [sourceText, setSourceText] = useState(EXAMPLE);
+  const [readyScript, setReadyScript] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [lessonNumber, setLessonNumber] = useState("5");
@@ -71,6 +74,8 @@ export default function Home() {
   useEffect(() => () => { if (mixedAudioUrl) URL.revokeObjectURL(mixedAudioUrl); }, [mixedAudioUrl]);
 
   const words = useMemo(() => script.trim() ? script.trim().split(/\s+/).length : 0, [script]);
+  const readyWords = useMemo(() => readyScript.trim() ? readyScript.trim().split(/\s+/).length : 0, [readyScript]);
+  const readyMinutes = Math.max(1, Math.ceil(readyWords / 160));
 
   async function createScript() {
     if (sourceMode === "text" && sourceText.trim().length < 40) return setError("Cole um conteúdo maior para gerar um roteiro fiel.");
@@ -90,6 +95,17 @@ export default function Home() {
       setTimeout(() => document.getElementById("roteiro")?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (e) { setError(e instanceof Error ? e.message : "Erro inesperado."); }
     finally { setLoading(""); }
+  }
+
+  function useReadyScript() {
+    const clean = readyScript.trim(); setError("");
+    if (clean.length < 80) return setError("Cole um roteiro maior antes de continuar.");
+    if (!/(^|\n)\s*Débora\s*:/i.test(clean)) return setError('Inclua pelo menos uma fala iniciada por "Débora:".');
+    if (!/(^|\n)\s*Professor Fiel\s*:/i.test(clean)) return setError('Inclua pelo menos uma fala iniciada por "Professor Fiel:".');
+    if (readyWords > 3150) return setError("O roteiro pronto deve ter no máximo 3.150 palavras para esta versão.");
+    const closestDuration = readyWords <= 820 ? 5 : readyWords <= 1600 ? 10 : readyWords <= 2380 ? 15 : 20;
+    setTargetDuration(closestDuration); setScript(clean); setDescription("Roteiro pronto enviado pelo usuário."); setStep(2);
+    setTimeout(() => document.getElementById("roteiro")?.scrollIntoView({ behavior: "smooth" }), 100);
   }
 
   async function createAudio() {
@@ -139,19 +155,22 @@ export default function Home() {
       <nav className="steps"><button className={step >= 1 ? "active" : ""} onClick={() => setStep(1)}><b>1</b><span>Conteúdo<small>Envie a lição</small></span></button><i/><button className={step >= 2 ? "active" : ""} disabled={!script} onClick={() => setStep(2)}><b>2</b><span>Roteiro<small>Revise a conversa</small></span></button><i/><button className={step >= 3 ? "active" : ""} disabled={!audioUrl} onClick={() => setStep(3)}><b>3</b><span>Podcast<small>Ouça e baixe</small></span></button></nav>
 
       <section className="panel" id="conteudo">
-        <div className="panelTitle"><span>1</span><div><h2>Adicione a lição da semana</h2><p>O conteúdo será usado como fonte para um roteiro original e fiel ao tema.</p></div></div>
-        <div className="sourceTabs"><button className={sourceMode === "text" ? "active" : ""} onClick={() => setSourceMode("text")}>✎ Colar texto</button><button className={sourceMode === "pdf" ? "active" : ""} onClick={() => setSourceMode("pdf")}>▣ Enviar PDF</button><button className={sourceMode === "url" ? "active" : ""} onClick={() => setSourceMode("url")}>↗ Usar endereço</button></div>
-        {sourceMode === "text" && <div className="textBox"><textarea value={sourceText} onChange={e => setSourceText(e.target.value)} maxLength={30000} placeholder="Cole o conteúdo da lição, subsídios ou anotações..."/><small>{sourceText.length.toLocaleString("pt-BR")} / 30.000 caracteres</small></div>}
-        {sourceMode === "pdf" && <label className="drop"><input type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)}/><b>↑</b><strong>{file ? file.name : "Selecione o PDF da lição"}</strong><span>Arquivo PDF de até 15 MB</span></label>}
-        {sourceMode === "url" && <label className="urlInput"><span>Endereço da página</span><input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="https://exemplo.com/licao-da-semana"/></label>}
+        <div className="panelTitle"><span>1</span><div><h2>{workflowMode === "ai" ? "Adicione a lição da semana" : "Cole seu roteiro pronto"}</h2><p>{workflowMode === "ai" ? "O conteúdo será usado como fonte para um roteiro original e fiel ao tema." : "Use um roteiro já preparado e siga diretamente para as vozes."}</p></div></div>
+        <div className="sourceTabs"><button className={workflowMode === "ai" ? "active" : ""} onClick={() => setWorkflowMode("ai")}>✦ Criar roteiro com IA</button><button className={workflowMode === "ready" ? "active" : ""} onClick={() => setWorkflowMode("ready")}>▤ Colar roteiro pronto</button></div>
+        {workflowMode === "ai" ? <>
+          <div className="sourceTabs"><button className={sourceMode === "text" ? "active" : ""} onClick={() => setSourceMode("text")}>✎ Colar texto</button><button className={sourceMode === "pdf" ? "active" : ""} onClick={() => setSourceMode("pdf")}>▣ Enviar PDF</button><button className={sourceMode === "url" ? "active" : ""} onClick={() => setSourceMode("url")}>↗ Usar endereço</button></div>
+          {sourceMode === "text" && <div className="textBox"><textarea value={sourceText} onChange={e => setSourceText(e.target.value)} maxLength={30000} placeholder="Cole o conteúdo da lição, subsídios ou anotações..."/><small>{sourceText.length.toLocaleString("pt-BR")} / 30.000 caracteres</small></div>}
+          {sourceMode === "pdf" && <label className="drop"><input type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)}/><b>↑</b><strong>{file ? file.name : "Selecione o PDF da lição"}</strong><span>Arquivo PDF de até 15 MB</span></label>}
+          {sourceMode === "url" && <label className="urlInput"><span>Endereço da página</span><input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="https://exemplo.com/licao-da-semana"/></label>}
+        </> : <><div className="textBox"><textarea value={readyScript} onChange={e => setReadyScript(e.target.value)} maxLength={30000} placeholder={'Cole o roteiro usando "Débora:" e "Professor Fiel:" antes de cada fala.'}/><small>{readyWords.toLocaleString("pt-BR")} palavras • aproximadamente {readyMinutes} min</small></div><div className="readyHelper"><span>O roteiro pronto não utiliza a IA para escrever.</span><button className="secondary" onClick={() => setReadyScript(SCRIPT_TEMPLATE)}>Carregar modelo de roteiro</button></div></>}
         <div className="lessonMetaGrid">
           <label><span>Número da lição</span><input value={lessonNumber} onChange={e => setLessonNumber(e.target.value)} placeholder="Ex.: 5"/></label>
           <label><span>Título da lição</span><input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Digite o título"/></label>
           <label><span>Editora</span><input value={publisher} onChange={e => setPublisher(e.target.value)} placeholder="Ex.: Editora Betel"/></label>
           <label><span>Classe</span><select value={lessonClass} onChange={e => setLessonClass(e.target.value)}>{CLASSES.map(c => <option key={c}>{c}</option>)}</select></label>
         </div>
-        <div className="durationSection"><span>Duração aproximada do podcast</span><div className="durationButtons">{DURATIONS.map(d => <button type="button" className={targetDuration === d ? "active" : ""} onClick={() => setTargetDuration(d)} key={d}>{d} min</button>)}</div><small>O tempo é uma referência e pode variar conforme a voz, o ritmo e o conteúdo da lição.</small></div>
-        <div className="actionRow"><p>O roteiro será um resumo conversacional original, não uma cópia do material.</p><button className="primary" onClick={createScript} disabled={!!loading}>{loading === "script" ? <><i className="spin"/> Criando roteiro...</> : <>✦ Criar roteiro com IA</>}</button></div>
+        {workflowMode === "ai" && <div className="durationSection"><span>Duração aproximada do podcast</span><div className="durationButtons">{DURATIONS.map(d => <button type="button" className={targetDuration === d ? "active" : ""} onClick={() => setTargetDuration(d)} key={d}>{d} min</button>)}</div><small>O tempo é uma referência e pode variar conforme a voz, o ritmo e o conteúdo da lição.</small></div>}
+        <div className="actionRow"><p>{workflowMode === "ai" ? "O roteiro será um resumo conversacional original, não uma cópia do material." : "A duração será calculada automaticamente pela quantidade de palavras."}</p>{workflowMode === "ai" ? <button className="primary" onClick={createScript} disabled={!!loading}>{loading === "script" ? <><i className="spin"/> Criando roteiro...</> : <>✦ Criar roteiro com IA</>}</button> : <button className="primary" onClick={useReadyScript}>Continuar com este roteiro →</button>}</div>
       </section>
 
       {error && <div className="error" role="alert"><b>!</b><span>{error}</span></div>}
