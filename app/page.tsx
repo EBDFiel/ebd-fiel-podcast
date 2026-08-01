@@ -189,13 +189,16 @@ export default function Home() {
     try {
       if (words > MAX_WORDS[targetDuration]) return setError(workflowMode === "ready" ? `O roteiro tem ${words} palavras. Reduza para no máximo ${MAX_READY_WORDS} palavras.` : `O roteiro tem ${words} palavras. Para ${targetDuration} minutos, reduza para no máximo ${MAX_WORDS[targetDuration]} palavras.`);
       const response = await fetch("/api/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, presenterVoice, commentatorVoice, presenterStyle, commentatorStyle, targetDuration, voiceEngine }) });
-      const data = await readApiResponse(response, "O Render interrompeu a geração do áudio. O conteúdo foi preservado; aguarde alguns segundos e tente novamente.");
-      if (!response.ok) throw new Error(data.error || "Não foi possível gerar o podcast.");
-      const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "audio/wav" });
+      if (!response.ok) {
+        const data = await readApiResponse(response, "O Render interrompeu a geração do áudio. O conteúdo foi preservado; aguarde alguns segundos e tente novamente.");
+        throw new Error(data.error || "Não foi possível gerar o podcast.");
+      }
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("O servidor não devolveu o arquivo de áudio. Tente novamente.");
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       const url = URL.createObjectURL(blob); setAudioUrl(url); setStep(3);
-      if (data.durationSeconds) setDuration(Number(data.durationSeconds));
+      const generatedDuration = Number(response.headers.get("X-Audio-Duration") || 0);
+      if (generatedDuration) setDuration(generatedDuration);
       const item = { title: lessonTitle, date: new Date().toLocaleDateString("pt-BR"), duration: targetDuration };
       const next = [item, ...history].slice(0, 6); setHistory(next); localStorage.setItem("ebd-podcast-history", JSON.stringify(next));
       setTimeout(() => { document.getElementById("resultado")?.scrollIntoView({ behavior: "smooth" }); audioRef.current?.play(); }, 120);

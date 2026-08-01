@@ -134,42 +134,39 @@ async function generateGoogleAudio(script: string, presenterVoice: string, comme
   const dialogue = parseDialogue(script);
   if (!dialogue.length) throw new Error('O roteiro precisa identificar as falas com "Débora:" e "Professor Fiel:".');
 
-  const results = new Array<Uint8Array>(dialogue.length);
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < dialogue.length) {
-      const index = cursor++;
-      const part = dialogue[index];
-      const selected = part.speaker === "Débora" ? presenterVoice : commentatorVoice;
-      let response: Response | null = null;
-      let data: any = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json; charset=utf-8" },
-          body: JSON.stringify({
-            input: { text: part.text },
-            voice: { languageCode: "pt-BR", name: `pt-BR-Chirp3-HD-${selected}` },
-            audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: SAMPLE_RATE },
-          }),
-        });
-        data = await response.json();
-        if (response.ok) break;
-        if ((response.status === 429 || response.status >= 500) && attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1800));
-          continue;
-        }
-        break;
+  const results: Uint8Array[] = [];
+  for (let index = 0; index < dialogue.length; index++) {
+    const part = dialogue[index];
+    const selected = part.speaker === "Débora" ? presenterVoice : commentatorVoice;
+    let response: Response | null = null;
+    let data: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          input: { text: part.text },
+          voice: { languageCode: "pt-BR", name: `pt-BR-Chirp3-HD-${selected}` },
+          audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: SAMPLE_RATE },
+        }),
+      });
+      const responseText = await response.text();
+      try { data = responseText ? JSON.parse(responseText) : null; }
+      catch { data = null; }
+      if (response.ok && data?.audioContent) break;
+      if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1800));
+        continue;
       }
-      if (!response?.ok || !data?.audioContent) {
-        const message = data?.error?.message || `O Google Cloud recusou a fala ${index + 1}.`;
-        throw new Error(response?.status === 429 ? "O Google Cloud TTS atingiu o limite momentâneo. Aguarde um minuto e tente novamente." : `Google Cloud TTS: ${message}`);
-      }
-      const wav = Uint8Array.from(atob(data.audioContent), char => char.charCodeAt(0));
-      results[index] = trimAndNormalizePcm(extractWavPcm(wav));
+      break;
     }
-  };
-  await Promise.all(Array.from({ length: Math.min(5, dialogue.length) }, () => worker()));
+    if (!response?.ok || !data?.audioContent) {
+      const message = data?.error?.message || `O Google Cloud não devolveu o áudio da fala ${index + 1}.`;
+      throw new Error(response?.status === 429 ? "O Google Cloud TTS atingiu o limite momentâneo. Aguarde um minuto e tente novamente." : `Google Cloud TTS: ${message}`);
+    }
+    const wav = Uint8Array.from(atob(data.audioContent), char => char.charCodeAt(0));
+    results.push(trimAndNormalizePcm(extractWavPcm(wav)));
+  }
   return { pcm: concatenatePcm(results), chunks: dialogue.length };
 }
 
@@ -223,10 +220,20 @@ export async function POST(request: Request) {
     const combinedPcm = generated.pcm;
     const durationSeconds = combinedPcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE);
     const wav = pcmToWav(combinedPcm);
-    let binary = "";
-    for (let index = 0; index < wav.length; index += 0x8000) binary += String.fromCharCode(...wav.subarray(index, index + 0x8000));
-    return Response.json({ audio: btoa(binary), durationSeconds: Math.round(durationSeconds), chunks: generated.chunks, engine });
+    return new Response(new Blob([wav], { type: "audio/wav" }), {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/wav",
+        "Content-Disposition": 'inline; filename="ebd-fiel-podcast.wav"',
+        "Content-Length": String(wav.byteLength),
+        "Cache-Control": "no-store",
+        "X-Audio-Duration": String(Math.round(durationSeconds)),
+        "X-Audio-Chunks": String(generated.chunks),
+        "X-Voice-Engine": engine,
+      },
+    });
   } catch (error) {
+    console.error("[EBD Fiel Podcast /api/audio]", error);
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível gerar o podcast nesta tentativa." }, { status: 500 });
   }
 }
